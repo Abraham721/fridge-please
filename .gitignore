@@ -6,7 +6,3 @@ dist
 *.local
 config.py
 .DS_Store
-
-# vite 임시 파일
-*.timestamp-*.mjs
-.vite

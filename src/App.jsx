@@ -1,8 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { RECIPES, matchRecipes, findRecipe, looseEq } from './recipes.js'
+import { CHEFS, findChef } from './chefs.js'
 import { detectIngredients, recommendRecipes, dishIngredients } from './ai.js'
 
 const LS_ING = 'fp_ingredients'
+const LS_CHEF = 'fp_chef'
 const load = (k, f) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : f } catch (e) { return f } }
 const fileToDataUrl = (file) => new Promise((res, rej) => {
   const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(file)
@@ -11,6 +13,7 @@ const fileToDataUrl = (file) => new Promise((res, rej) => {
 export default function App() {
   const [tab, setTab] = useState('fridge')
   const [ingredients, setIngredients] = useState(() => load(LS_ING, ['계란', '김치', '대파', '두부', '양파', '밥']))
+  const [chefId, setChefId] = useState(() => load(LS_CHEF, ''))
   const [input, setInput] = useState('')
   const [detected, setDetected] = useState([])
   const [busy, setBusy] = useState('')
@@ -20,8 +23,10 @@ export default function App() {
   const [cook, setCook] = useState(null)
 
   useEffect(() => { localStorage.setItem(LS_ING, JSON.stringify(ingredients)) }, [ingredients])
+  useEffect(() => { localStorage.setItem(LS_CHEF, JSON.stringify(chefId)) }, [chefId])
 
   const local = useMemo(() => matchRecipes(ingredients, RECIPES), [ingredients])
+  const chef = findChef(chefId)
 
   const addIngredient = (name) => {
     const n = (name || '').trim()
@@ -43,8 +48,8 @@ export default function App() {
   }
 
   async function onAiRecommend() {
-    setError(''); setBusy('AI가 요리 추천 중…'); setAiRecipes(null)
-    try { setAiRecipes(await recommendRecipes(ingredients)) }
+    setError(''); setBusy(chef ? (chef.name + ' 스타일로 추천 중…') : 'AI가 요리 추천 중…'); setAiRecipes(null)
+    try { setAiRecipes(await recommendRecipes(ingredients, chef)) }
     catch (err) { setError('추천 실패: ' + err.message) }
     finally { setBusy('') }
   }
@@ -68,7 +73,7 @@ export default function App() {
     <div className="app">
       <header className="top">
         <h1>냉장고를 부탁해 <span className="emoji">🧊</span></h1>
-        <p className="sub">사진/재료 → 만들 요리 추천 · 만들 요리 → 살 재료</p>
+        <p className="sub">사진/재료 → 만들 요리 추천 · 셰프 스타일로 추천 · 요리 → 살 재료</p>
       </header>
 
       <nav className="tabs">
@@ -115,6 +120,18 @@ export default function App() {
 
           <section className="card">
             <h2>지금 만들 수 있는 요리</h2>
+
+            <div className="chefbar">
+              <span className="lbl">👨‍🍳 셰프 스타일로 추천 (선택)</span>
+              <div className="chips">
+                <button className={'chip add' + (chefId === '' ? ' sel' : '')} onClick={() => setChefId('')}>무관</button>
+                {CHEFS.map(c => (
+                  <button className={'chip add' + (chefId === c.id ? ' sel' : '')} key={c.id} onClick={() => setChefId(c.id)}>{c.emoji} {c.name}</button>
+                ))}
+              </div>
+              {chef && <p className="chefinfo">{chef.emoji} <b>{chef.name}</b> · {chef.cuisine} · {chef.restaurant}<br/>{chef.style}</p>}
+            </div>
+
             {local.makeable.length === 0 && local.almost.length === 0 && <p className="muted">매칭되는 요리가 없어요. 재료를 더 추가해 보세요.</p>}
             {local.makeable.map(r => (
               <div className="rec" key={r.name}><span>{r.emoji} {r.name}</span><span className="ok">재료 OK</span></div>
@@ -122,11 +139,18 @@ export default function App() {
             {local.almost.map(r => (
               <div className="rec" key={r.name}><span>{r.emoji} {r.name}</span><span className="miss">+{r.missing.join(', ')}</span></div>
             ))}
-            <button className="ai" onClick={onAiRecommend}>✨ AI 추천 더 보기 (Claude)</button>
+
+            <button className="ai" onClick={onAiRecommend}>✨ {chef ? (chef.name + ' 스타일로 추천') : 'AI 추천 더 보기 (Claude)'}</button>
+            {aiRecipes && aiRecipes.length === 0 && <p className="muted small">추천 결과가 없어요. 재료를 더 넣거나 셰프를 바꿔보세요.</p>}
             {aiRecipes && aiRecipes.map((r, i) => (
               <div className="rec airec" key={i}>
-                <span>🍲 {r.name}{r.note ? <em> — {r.note}</em> : null}</span>
-                {r.missing.length > 0 ? <span className="miss">+{r.missing.join(', ')}</span> : <span className="ok">재료 OK</span>}
+                <div className="topline">
+                  <span>🍲 {r.name}{r.note ? <em> — {r.note}</em> : null}</span>
+                  {r.missing.length > 0 ? <span className="miss">+{r.missing.join(', ')}</span> : <span className="ok">재료 OK</span>}
+                </div>
+                {r.steps && r.steps.length > 0 && (
+                  <ol className="steps">{r.steps.map((s, j) => <li key={j}>{s}</li>)}</ol>
+                )}
               </div>
             ))}
           </section>
@@ -172,13 +196,14 @@ export default function App() {
           <section className="card">
             <h2>정보</h2>
             <p>사진 인식과 AI 추천은 <b>우리 서버(Vercel 함수)에서 Claude</b>로 동작해요. API 키는 <b>서버 환경변수에만</b> 있고, 이 앱(브라우저)이나 코드에는 들어가지 않아요.</p>
-            <p className="muted small">로컬에서 <code>npm run dev</code>(vite)만 켜면 백엔드가 없어 AI 기능은 안 돼요. 배포본 또는 <code>vercel dev</code>에서 동작합니다. 냉장고 재료는 이 브라우저에만 저장돼요.</p>
-            <button className="danger" onClick={() => { if (window.confirm('재료를 모두 지울까요?')) { localStorage.removeItem(LS_ING); window.location.reload() } }}>재료 초기화</button>
+            <p><b>셰프 스타일 추천</b>: "냉장고를 부탁해" 시즌2 8인 셰프(최현석·박은영·샘킴·정호영·김풍·손종원·윤남노·권성준)의 스타일 프로필을 Claude에 넘겨, 그 셰프 결의 요리를 추천해요.</p>
+            <p className="muted small">로컬에서 <code>npm run dev</code>(vite)만 켜면 백엔드가 없어 AI는 안 돼요. 배포본 또는 <code>vercel dev</code>에서 동작. 냉장고 재료·선택 셰프는 이 브라우저에만 저장돼요.</p>
+            <button className="danger" onClick={() => { if (window.confirm('재료/설정을 모두 지울까요?')) { localStorage.removeItem(LS_ING); localStorage.removeItem(LS_CHEF); window.location.reload() } }}>초기화</button>
           </section>
         </main>
       )}
 
-      <footer className="foot">냉장고를 부탁해 · DailyAppLab · React + Vercel 함수 + Claude</footer>
+      <footer className="foot">냉장고를 부탁해 · DailyAppLab · React + Vercel 함수 + Claude · 셰프 8인 스타일</footer>
     </div>
   )
 }

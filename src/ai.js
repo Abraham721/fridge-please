@@ -1,5 +1,4 @@
-// 프론트엔드는 더 이상 API 키를 모른다. 우리 서버리스 함수(/api/*)만 호출한다.
-// 키는 서버(Vercel) 환경변수에만 있다.
+// 프론트엔드는 API 키를 모른다. 우리 서버리스 함수(/api/*)만 호출한다. 키는 서버(Vercel) 환경변수에만.
 async function postJson(path, body) {
   let r
   try {
@@ -20,8 +19,8 @@ export async function detectIngredients(dataUrl) {
   return (d && d.ingredients) || []
 }
 
-export async function recommendRecipes(ingredients) {
-  const d = await postJson('/api/recommend', { ingredients })
+export async function recommendRecipes(ingredients, chef) {
+  const d = await postJson('/api/recommend', { ingredients, chef: chef || null })
   return (d && d.recipes) || []
 }
 
