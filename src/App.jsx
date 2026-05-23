@@ -19,7 +19,7 @@ const DECOS = [
 
 export default function App() {
   const [tab, setTab] = useState('fridge')
-  const [ingredients, setIngredients] = useState(() => load(LS_ING, ['계란', '김치', '두부', '대파', '양파']))
+  const [ingredients, setIngredients] = useState(() => load(LS_ING, []))
   const [chefId, setChefId] = useState(() => load(LS_CHEF, ''))
   const [input, setInput] = useState('')
   const [style, setStyle] = useState('')
@@ -89,12 +89,12 @@ export default function App() {
         <nav className="tabs">
           <button className={tab === 'fridge' ? 'on' : ''} onClick={() => setTab('fridge')}><span className="em">🧊</span>냉장고</button>
           <button className={tab === 'cook' ? 'on' : ''} onClick={() => setTab('cook')}><span className="em">🍳</span>만들고 싶어</button>
-          <button className={tab === 'info' ? 'on' : ''} onClick={() => setTab('info')}><span className="em">❓</span>정보</button>
         </nav>
 
         {busy && !showResults && <div className="banner busy">{busy}</div>}
         {error && <div className="banner err" onClick={() => setError('')}>{error} ✕</div>}
 
+        <div className="tabbody">
         {tab === 'fridge' && (
           <>
             <section className="card">
@@ -146,10 +146,18 @@ export default function App() {
               <button onClick={() => onCook()}>계산</button>
             </div>
             <div className="chips">
-              {RECIPES.slice(0, 8).map(r => (
-                <button className="chip add" key={r.name} onClick={() => { setTarget(r.name); onCook(r.name) }}>{r.emoji} {r.name}</button>
+              {CHEFS.map(c => (
+                <button className={'chip add' + (chefId === c.id ? ' sel' : '')} key={c.id} onClick={() => setChefId(prev => prev === c.id ? '' : c.id)}>👨‍🍳 {c.name}</button>
               ))}
             </div>
+            <p className="hint">{chef ? chef.name + '의 대표 요리 — 누르면 살 재료를 알려줘요' : '셰프를 고르면 대표 요리가 나와요'}</p>
+            {chef && (
+              <div className="chips">
+                {chef.signatures.map(d => (
+                  <button className="chip add" key={d} onClick={() => { setTarget(d); onCook(d) }}>{d}</button>
+                ))}
+              </div>
+            )}
             {cook && (
               <div className="cookresult">
                 <div className="h">{cook.dish}</div>
@@ -161,16 +169,9 @@ export default function App() {
             )}
           </section>
         )}
+        </div>
 
-        {tab === 'info' && (
-          <section className="card">
-            <div className="h">ℹ️ 정보</div>
-            <p style={{ fontSize: 13, lineHeight: 1.6 }}>사진 인식·AI 추천은 서버(Vercel 함수)에서 <b>Claude</b>로 동작해요. 재료·원하는 스타일·15분 제한·선택 셰프 페르소나를 반영해 추천합니다.</p>
-            <button className="danger" onClick={() => { if (window.confirm('재료/설정을 모두 지울까요?')) { localStorage.removeItem(LS_ING); localStorage.removeItem(LS_CHEF); window.location.reload() } }}>초기화</button>
-          </section>
-        )}
-
-        <div className="foot">DailyAppLab · 셰프 8인 × Claude 🍳</div>
+        <div className="foot">DailyAppLab · 셰프 8인 × Claude 🍳 · <button className="resetlink" onClick={() => { if (window.confirm('재료/설정을 모두 지울까요?')) { localStorage.removeItem(LS_ING); localStorage.removeItem(LS_CHEF); window.location.reload() } }}>초기화</button></div>
       </div>
 
       {showResults && (

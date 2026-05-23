@@ -101,3 +101,7 @@ body{
 .tgl{border:2px solid var(--pink);background:#fff;color:var(--hot);border-radius:12px;padding:0 12px;font-family:inherit;font-size:12.5px;cursor:pointer;white-space:nowrap;box-shadow:var(--soft)}
 .tgl.on{background:var(--hot);color:#fff;border-color:#fff}
 .time{font-size:10.5px;color:#6a4a86;background:var(--lav);border-radius:8px;padding:3px 8px;white-space:nowrap;margin-left:4px}
+
+/* 탭 높이 고정(전환 시 점프 방지) + 푸터 초기화 링크 */
+.tabbody{min-height:0}
+.resetlink{background:none;border:0;color:#c98fbf;text-decoration:underline;font-size:10.5px;cursor:pointer;font-family:inherit;padding:0}
