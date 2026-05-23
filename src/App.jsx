@@ -73,7 +73,7 @@ export default function App() {
     <div className="app">
       <header className="top">
         <h1>냉장고를 부탁해 <span className="emoji">🧊</span></h1>
-        <p className="sub">사진/재료 → 만들 요리 추천 · 셰프 스타일로 추천 · 요리 → 살 재료</p>
+        <p className="sub">📸 재료 찍고 → 셰프 스타일로 요리 추천!</p>
       </header>
 
       <nav className="tabs">
@@ -88,7 +88,7 @@ export default function App() {
       {tab === 'fridge' && (
         <main>
           <section className="card">
-            <h2>내 냉장고 재료</h2>
+            <h2>🧺 내 냉장고 재료</h2>
             <div className="addrow">
               <input value={input} onChange={e => setInput(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter') { addIngredient(input); setInput('') } }}
@@ -105,7 +105,7 @@ export default function App() {
               📷 냉장고 사진으로 재료 인식
               <input type="file" accept="image/*" onChange={onPhoto} hidden />
             </label>
-            <p className="muted small">※ 사진 인식·AI 추천은 배포본(또는 vercel dev)에서 동작해요. 로컬 미리보기에선 재료를 직접 추가하면 추천은 됩니다.</p>
+            <p className="muted small">※ 사진 인식·AI 추천은 배포본에서 동작해요.</p>
             {detected.length > 0 && (
               <div className="detected">
                 <b>인식된 재료 (눌러서 추가):</b>
@@ -118,11 +118,10 @@ export default function App() {
             )}
           </section>
 
-          <section className="card">
-            <h2>지금 만들 수 있는 요리</h2>
-
+          <section className="card chefcard">
+            <h2>👨‍🍳 셰프 스타일 추천</h2>
             <div className="chefbar">
-              <span className="lbl">👨‍🍳 셰프 스타일로 추천 (선택)</span>
+              <span className="lbl">스타일을 고르고 추천 버튼을 눌러요 (Claude가 그 셰프 결로 추천)</span>
               <div className="chips">
                 <button className={'chip add' + (chefId === '' ? ' sel' : '')} onClick={() => setChefId('')}>무관</button>
                 {CHEFS.map(c => (
@@ -131,16 +130,7 @@ export default function App() {
               </div>
               {chef && <p className="chefinfo">{chef.emoji} <b>{chef.name}</b> · {chef.cuisine} · {chef.restaurant}<br/>{chef.style}</p>}
             </div>
-
-            {local.makeable.length === 0 && local.almost.length === 0 && <p className="muted">매칭되는 요리가 없어요. 재료를 더 추가해 보세요.</p>}
-            {local.makeable.map(r => (
-              <div className="rec" key={r.name}><span>{r.emoji} {r.name}</span><span className="ok">재료 OK</span></div>
-            ))}
-            {local.almost.map(r => (
-              <div className="rec" key={r.name}><span>{r.emoji} {r.name}</span><span className="miss">+{r.missing.join(', ')}</span></div>
-            ))}
-
-            <button className="ai" onClick={onAiRecommend}>✨ {chef ? (chef.name + ' 스타일로 추천') : 'AI 추천 더 보기 (Claude)'}</button>
+            <button className="ai" onClick={onAiRecommend}>✨ {chef ? (chef.name + ' 스타일로 추천!') : 'AI 추천 받기 (Claude)'}</button>
             {aiRecipes && aiRecipes.length === 0 && <p className="muted small">추천 결과가 없어요. 재료를 더 넣거나 셰프를 바꿔보세요.</p>}
             {aiRecipes && aiRecipes.map((r, i) => (
               <div className="rec airec" key={i}>
@@ -154,13 +144,25 @@ export default function App() {
               </div>
             ))}
           </section>
+
+          <section className="card">
+            <h2>🧊 재료로 바로 매칭</h2>
+            <p className="muted small">앱 기본 레시피와 냉장고 재료를 단순 매칭한 결과예요 (셰프 추천과 별개).</p>
+            {local.makeable.length === 0 && local.almost.length === 0 && <p className="muted">매칭되는 요리가 없어요. 재료를 더 추가해 보세요.</p>}
+            {local.makeable.slice(0, 6).map(r => (
+              <div className="rec" key={r.name}><span>{r.emoji} {r.name}</span><span className="ok">재료 OK</span></div>
+            ))}
+            {local.almost.slice(0, 5).map(r => (
+              <div className="rec" key={r.name}><span>{r.emoji} {r.name}</span><span className="miss">+{r.missing.join(', ')}</span></div>
+            ))}
+          </section>
         </main>
       )}
 
       {tab === 'cook' && (
         <main>
           <section className="card">
-            <h2>만들고 싶은 요리 → 살 재료</h2>
+            <h2>🍳 만들고 싶어 → 살 재료</h2>
             <div className="addrow">
               <input value={target} onChange={e => setTarget(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter') onCook() }}
@@ -182,7 +184,7 @@ export default function App() {
                   </div>
                   <div>
                     <b className="need">🛒 사야 할 것</b>
-                    <ul>{cook.need.length ? cook.need.map(i => <li key={i}>{i}</li>) : <li className="muted">다 있어요! 바로 만들 수 있어요 🎉</li>}</ul>
+                    <ul>{cook.need.length ? cook.need.map(i => <li key={i}>{i}</li>) : <li className="muted">다 있어요! 🎉</li>}</ul>
                   </div>
                 </div>
               </div>
@@ -194,16 +196,16 @@ export default function App() {
       {tab === 'info' && (
         <main>
           <section className="card">
-            <h2>정보</h2>
-            <p>사진 인식과 AI 추천은 <b>우리 서버(Vercel 함수)에서 Claude</b>로 동작해요. API 키는 <b>서버 환경변수에만</b> 있고, 이 앱(브라우저)이나 코드에는 들어가지 않아요.</p>
-            <p><b>셰프 스타일 추천</b>: "냉장고를 부탁해" 시즌2 8인 셰프(최현석·박은영·샘킴·정호영·김풍·손종원·윤남노·권성준)의 스타일 프로필을 Claude에 넘겨, 그 셰프 결의 요리를 추천해요.</p>
-            <p className="muted small">로컬에서 <code>npm run dev</code>(vite)만 켜면 백엔드가 없어 AI는 안 돼요. 배포본 또는 <code>vercel dev</code>에서 동작. 냉장고 재료·선택 셰프는 이 브라우저에만 저장돼요.</p>
+            <h2>ℹ️ 정보</h2>
+            <p>사진 인식과 AI 추천은 <b>우리 서버(Vercel 함수)에서 Claude</b>로 동작해요. API 키는 <b>서버 환경변수에만</b> 있어요.</p>
+            <p><b>셰프 스타일 추천</b>: 냉부 시즌2 8인 셰프(최현석·박은영·샘킴·정호영·김풍·손종원·윤남노·권성준)의 스타일·회차 요리를 Claude에 넘겨 그 셰프 결로 추천해요.</p>
+            <p className="muted small">냉장고 재료·선택 셰프는 이 브라우저에만 저장돼요.</p>
             <button className="danger" onClick={() => { if (window.confirm('재료/설정을 모두 지울까요?')) { localStorage.removeItem(LS_ING); localStorage.removeItem(LS_CHEF); window.location.reload() } }}>초기화</button>
           </section>
         </main>
       )}
 
-      <footer className="foot">냉장고를 부탁해 · DailyAppLab · React + Vercel 함수 + Claude · 셰프 8인 스타일</footer>
+      <footer className="foot">냉장고를 부탁해 · DailyAppLab · 셰프 8인 × Claude 🍳</footer>
     </div>
   )
 }
