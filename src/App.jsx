@@ -105,14 +105,14 @@ export default function App() {
                   placeholder="재료 입력 후 Enter" />
                 <button onClick={() => { addIngredient(input); setInput('') }}>추가</button>
               </div>
-              <div className="styrow">
-                <input className="styin" value={style} onChange={e => setStyle(e.target.value)} placeholder="원하는 스타일 (매콤·다이어트·비건…)" />
-                <button className={'tgl' + (fast ? ' on' : '')} onClick={() => setFast(f => !f)}>⏱ 15분</button>
-              </div>
               <div className="chips">
                 {ingredients.map(it => (
                   <span className="chip" key={it}><span className="em">{emo(it)}</span>{it}<button onClick={() => removeIngredient(it)}>✕</button></span>
                 ))}
+              </div>
+              <div className="styrow">
+                <input className="styin" value={style} onChange={e => setStyle(e.target.value)} placeholder="원하는 스타일 (매콤·다이어트·비건…)" />
+                <button className={'tgl' + (fast ? ' on' : '')} onClick={() => setFast(f => !f)}>⏱ 15분</button>
               </div>
               <label className="photo">📷 사진으로 재료 인식<input type="file" accept="image/*" onChange={onPhoto} hidden /></label>
               {detected.length > 0 && (
@@ -127,11 +127,11 @@ export default function App() {
             <section className="card">
               <div className="h">👨‍🍳 셰프 스타일 골라줘</div>
               <div className="chips">
-                <button className={'chip add' + (chefId === '' ? ' sel' : '')} onClick={() => setChefId('')}>무관</button>
                 {CHEFS.map(c => (
-                  <button className={'chip add' + (chefId === c.id ? ' sel' : '')} key={c.id} onClick={() => setChefId(c.id)}>👨‍🍳 {c.name}</button>
+                  <button className={'chip add' + (chefId === c.id ? ' sel' : '')} key={c.id} onClick={() => setChefId(prev => prev === c.id ? '' : c.id)}>👨‍🍳 {c.name}</button>
                 ))}
               </div>
+              <p className="hint">안 고르면 '무관' · 같은 셰프 다시 누르면 해제</p>
               <button className="cta" onClick={onAiRecommend}>✦ {chef ? chef.name + ' 추천' : '추천 받기'} ✦</button>
             </section>
           </>
