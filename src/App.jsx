@@ -10,7 +10,6 @@ const fileToDataUrl = (file) => new Promise((res, rej) => {
   const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(file)
 })
 
-// 모서리 장식 (이모지 스티커)
 const DECOS = [
   { e: '🎀', top: '2%', left: '3%' }, { e: '💎', top: '10%', right: '4%' },
   { e: '⭐', top: '34%', left: '2%' }, { e: '🍒', top: '52%', right: '3%' },
@@ -23,6 +22,8 @@ export default function App() {
   const [ingredients, setIngredients] = useState(() => load(LS_ING, ['계란', '김치', '두부', '대파', '양파']))
   const [chefId, setChefId] = useState(() => load(LS_CHEF, ''))
   const [input, setInput] = useState('')
+  const [style, setStyle] = useState('')
+  const [fast, setFast] = useState(false)
   const [detected, setDetected] = useState([])
   const [busy, setBusy] = useState('')
   const [error, setError] = useState('')
@@ -54,8 +55,9 @@ export default function App() {
   }
 
   async function onAiRecommend() {
-    setError(''); setShowResults(true); setAiRecipes(null); setBusy(chef ? (chef.name + ' 추천 중…') : 'AI 추천 중…')
-    try { setAiRecipes(await recommendRecipes(ingredients, chef)) }
+    setError(''); setShowResults(true); setAiRecipes(null)
+    setBusy((chef ? (chef.name + ' 추천 중') : 'AI 추천 중') + (fast ? ' (15분 이내)' : '') + '…')
+    try { setAiRecipes(await recommendRecipes(ingredients, chef, { style, fast })) }
     catch (err) { setError('추천 실패: ' + err.message); setShowResults(false) }
     finally { setBusy('') }
   }
@@ -102,6 +104,10 @@ export default function App() {
                   onKeyDown={e => { if (e.key === 'Enter') { addIngredient(input); setInput('') } }}
                   placeholder="재료 입력 후 Enter" />
                 <button onClick={() => { addIngredient(input); setInput('') }}>추가</button>
+              </div>
+              <div className="styrow">
+                <input className="styin" value={style} onChange={e => setStyle(e.target.value)} placeholder="원하는 스타일 (매콤·다이어트·비건…)" />
+                <button className={'tgl' + (fast ? ' on' : '')} onClick={() => setFast(f => !f)}>⏱ 15분</button>
               </div>
               <div className="chips">
                 {ingredients.map(it => (
@@ -159,7 +165,7 @@ export default function App() {
         {tab === 'info' && (
           <section className="card">
             <div className="h">ℹ️ 정보</div>
-            <p style={{ fontSize: 13, lineHeight: 1.6 }}>사진 인식·AI 추천은 서버(Vercel 함수)에서 <b>Claude</b>로 동작해요. API 키는 서버에만 있어요. 냉부 시즌2 8인 셰프 스타일·회차 요리를 참고해 추천합니다.</p>
+            <p style={{ fontSize: 13, lineHeight: 1.6 }}>사진 인식·AI 추천은 서버(Vercel 함수)에서 <b>Claude</b>로 동작해요. 재료·원하는 스타일·15분 제한·선택 셰프 페르소나를 반영해 추천합니다.</p>
             <button className="danger" onClick={() => { if (window.confirm('재료/설정을 모두 지울까요?')) { localStorage.removeItem(LS_ING); localStorage.removeItem(LS_CHEF); window.location.reload() } }}>초기화</button>
           </section>
         )}
@@ -170,14 +176,17 @@ export default function App() {
       {showResults && (
         <div className="modal" onClick={() => setShowResults(false)}>
           <div className="sheet" onClick={e => e.stopPropagation()}>
-            <div className="bar"><h2>✦ {chef ? chef.name + ' 추천' : 'AI 추천'}</h2><button className="close" onClick={() => setShowResults(false)}>✕</button></div>
+            <div className="bar"><h2>✦ {chef ? chef.name + ' 추천' : 'AI 추천'}{fast ? ' · 15분' : ''}</h2><button className="close" onClick={() => setShowResults(false)}>✕</button></div>
             {busy && <div className="banner busy">{busy} 🍳</div>}
-            {aiRecipes && aiRecipes.length === 0 && <p className="hint">추천이 없어요. 재료를 더 넣거나 셰프를 바꿔보세요.</p>}
+            {aiRecipes && aiRecipes.length === 0 && <p className="hint">추천이 없어요. 재료를 더 넣거나 조건을 바꿔보세요.</p>}
             {aiRecipes && aiRecipes.map((r, i) => (
               <div className="rec" key={i}>
                 <div className="topline">
                   <span className="nm">🍲 {r.name}{r.note ? <em> — {r.note}</em> : null}</span>
-                  {r.missing.length > 0 ? <span className="miss">+{r.missing.join(', ')}</span> : <span className="ok">재료 OK</span>}
+                  <span style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                    {r.time ? <span className="time">⏱{r.time}분</span> : null}
+                    {r.missing.length > 0 ? <span className="miss">+{r.missing.join(', ')}</span> : <span className="ok">재료 OK</span>}
+                  </span>
                 </div>
                 {r.steps && r.steps.length > 0 && <ol className="steps">{r.steps.map((s, j) => <li key={j}>{s}</li>)}</ol>}
               </div>
