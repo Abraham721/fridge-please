@@ -105,3 +105,18 @@ body{
 /* 탭 높이 고정(전환 시 점프 방지) + 푸터 초기화 링크 */
 .tabbody{min-height:0}
 .resetlink{background:none;border:0;color:#c98fbf;text-decoration:underline;font-size:10.5px;cursor:pointer;font-family:inherit;padding:0}
+
+/* 추천 카드 탭 → 상세 레시피 */
+.rec.clickable{cursor:pointer}
+.rec.clickable:active{transform:translateY(1px)}
+.seemore{font-size:11px;color:#c98fbf;text-align:right;margin-top:5px}
+.leg{font-size:11px;color:#8a6a87;display:flex;gap:12px;align-items:center;margin:4px 0 8px}
+.leg .dot{display:inline-block;width:11px;height:11px;border-radius:50%;border:1.5px solid var(--ink);margin-right:4px;vertical-align:-1px}
+.leg .dot.have{background:#9be8d8}
+.leg .dot.buy{background:var(--hot)}
+.ings{margin:2px 0 12px}
+.ing{font-size:12.5px;border:2px solid #fff;border-radius:999px;padding:4px 11px;box-shadow:0 3px 6px rgba(180,120,170,.28)}
+.ing.have{background:#d8f7ec;color:#268a66}
+.ing.buy{background:#ffe0ee;color:#c0467f}
+.steps.big li{font-size:13.5px;padding:4px 0;color:#5a3f58}
+.tip{font-size:12.5px;background:#fff7d6;border:2px solid #ffe17a;border-radius:12px;padding:9px 11px;margin-top:10px}

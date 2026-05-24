@@ -1,13 +1,29 @@
 import React, { useEffect, useState } from 'react'
 import { RECIPES, findRecipe, looseEq } from './recipes.js'
 import { CHEFS, findChef } from './chefs.js'
-import { detectIngredients, recommendRecipes, dishIngredients } from './ai.js'
+import { detectIngredients, recommendRecipes, dishIngredients, recipeDetail } from './ai.js'
 
 const LS_ING = 'fp_ingredients'
 const LS_CHEF = 'fp_chef'
 const load = (k, f) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : f } catch (e) { return f } }
 const fileToDataUrl = (file) => new Promise((res, rej) => {
   const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(file)
+})
+// 업로드 전 브라우저에서 축소·압축 (폰 사진이 커서 서버 413 나는 것 방지)
+const fileToSmallDataUrl = (file, max = 1024, quality = 0.8) => new Promise(async (res) => {
+  try {
+    const raw = await fileToDataUrl(file)
+    const img = new Image()
+    img.onload = () => {
+      let w = img.width, h = img.height
+      if (w > max || h > max) { const s = max / Math.max(w, h); w = Math.round(w * s); h = Math.round(h * s) }
+      const c = document.createElement('canvas'); c.width = w; c.height = h
+      c.getContext('2d').drawImage(img, 0, 0, w, h)
+      try { res(c.toDataURL('image/jpeg', quality)) } catch (e) { res(raw) }
+    }
+    img.onerror = () => res(raw)
+    img.src = raw
+  } catch (e) { res(await fileToDataUrl(file)) }
 })
 
 const DECOS = [
@@ -29,6 +45,8 @@ export default function App() {
   const [error, setError] = useState('')
   const [aiRecipes, setAiRecipes] = useState(null)
   const [showResults, setShowResults] = useState(false)
+  const [detail, setDetail] = useState(null)
+  const [detailBusy, setDetailBusy] = useState(false)
   const [target, setTarget] = useState('')
   const [cook, setCook] = useState(null)
 
@@ -49,18 +67,27 @@ export default function App() {
     e.target.value = ''
     if (!file) return
     setError(''); setBusy('사진에서 재료 인식 중…'); setDetected([])
-    try { setDetected(await detectIngredients(await fileToDataUrl(file))) }
+    try { setDetected(await detectIngredients(await fileToSmallDataUrl(file))) }
     catch (err) { setError('사진 인식 실패: ' + err.message) }
     finally { setBusy('') }
   }
 
   async function onAiRecommend() {
-    setError(''); setShowResults(true); setAiRecipes(null)
+    setError(''); setShowResults(true); setAiRecipes(null); setDetail(null)
     setBusy((chef ? (chef.name + ' 추천 중') : 'AI 추천 중') + (fast ? ' (15분 이내)' : '') + '…')
     try { setAiRecipes(await recommendRecipes(ingredients, chef, { style, fast })) }
     catch (err) { setError('추천 실패: ' + err.message); setShowResults(false) }
     finally { setBusy('') }
   }
+
+  async function openDetail(name) {
+    setDetail({ name, ingredients: [], steps: [], tip: '', time: '' }); setDetailBusy(true)
+    try { setDetail(await recipeDetail(name, ingredients, chef, { style, fast })) }
+    catch (err) { setError('레시피 실패: ' + err.message); setDetail(null) }
+    finally { setDetailBusy(false) }
+  }
+
+  function closeResults() { setShowResults(false); setDetail(null) }
 
   async function onCook(name) {
     const dish = (name || target).trim()
@@ -175,23 +202,44 @@ export default function App() {
       </div>
 
       {showResults && (
-        <div className="modal" onClick={() => setShowResults(false)}>
+        <div className="modal" onClick={closeResults}>
           <div className="sheet" onClick={e => e.stopPropagation()}>
-            <div className="bar"><h2>✦ {chef ? chef.name + ' 추천' : 'AI 추천'}{fast ? ' · 15분' : ''}</h2><button className="close" onClick={() => setShowResults(false)}>✕</button></div>
-            {busy && <div className="banner busy">{busy} 🍳</div>}
-            {aiRecipes && aiRecipes.length === 0 && <p className="hint">추천이 없어요. 재료를 더 넣거나 조건을 바꿔보세요.</p>}
-            {aiRecipes && aiRecipes.map((r, i) => (
-              <div className="rec" key={i}>
-                <div className="topline">
-                  <span className="nm">🍲 {r.name}{r.note ? <em> — {r.note}</em> : null}</span>
-                  <span style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                    {r.time ? <span className="time">⏱{r.time}분</span> : null}
-                    {r.missing.length > 0 ? <span className="miss">+{r.missing.join(', ')}</span> : <span className="ok">재료 OK</span>}
-                  </span>
-                </div>
-                {r.steps && r.steps.length > 0 && <ol className="steps">{r.steps.map((s, j) => <li key={j}>{s}</li>)}</ol>}
-              </div>
-            ))}
+            {detail ? (
+              <>
+                <div className="bar"><button className="close" onClick={() => setDetail(null)}>←</button><h2>{detail.name}{detail.time ? ' · ' + detail.time + '분' : ''}</h2></div>
+                {detailBusy ? <div className="banner busy">상세 레시피 만드는 중… 🍳</div> : (
+                  <>
+                    <div className="leg"><span><span className="dot have"></span>집에 있는 것</span><span><span className="dot buy"></span>사야 할 것</span></div>
+                    <div className="chips ings">
+                      {detail.ingredients.map((x, i) => {
+                        const have = ingredients.some(h => looseEq(h, x.item))
+                        return <span key={i} className={'ing ' + (have ? 'have' : 'buy')}>{x.item}{x.amount ? ' ' + x.amount : ''}</span>
+                      })}
+                    </div>
+                    <ol className="steps big">{detail.steps.map((s, i) => <li key={i}>{s}</li>)}</ol>
+                    {detail.tip && <p className="tip">💡 {detail.tip}</p>}
+                  </>
+                )}
+              </>
+            ) : (
+              <>
+                <div className="bar"><h2>✦ {chef ? chef.name + ' 추천' : 'AI 추천'}{fast ? ' · 15분' : ''}</h2><button className="close" onClick={closeResults}>✕</button></div>
+                {busy && <div className="banner busy">{busy} 🍳</div>}
+                {aiRecipes && aiRecipes.length === 0 && <p className="hint">추천이 없어요. 재료를 더 넣거나 조건을 바꿔보세요.</p>}
+                {aiRecipes && aiRecipes.map((r, i) => (
+                  <div className="rec clickable" key={i} onClick={() => openDetail(r.name)}>
+                    <div className="topline">
+                      <span className="nm">🍲 {r.name}{r.note ? <em> — {r.note}</em> : null}</span>
+                      <span style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                        {r.time ? <span className="time">⏱{r.time}분</span> : null}
+                        {r.missing.length > 0 ? <span className="miss">+{r.missing.join(', ')}</span> : <span className="ok">재료 OK</span>}
+                      </span>
+                    </div>
+                    <div className="seemore">레시피 보기 ▶</div>
+                  </div>
+                ))}
+              </>
+            )}
           </div>
         </div>
       )}

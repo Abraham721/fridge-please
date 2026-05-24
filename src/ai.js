@@ -26,3 +26,7 @@ export async function dishIngredients(dish) {
   const d = await postJson('/api/dish', { dish })
   return (d && d.ingredients) || []
 }
+export async function recipeDetail(name, ingredients, chef, opts) {
+  const o = opts || {}
+  return await postJson('/api/recipe', { name, ingredients, chef: chef || null, style: o.style || '', fast: !!o.fast })
+}
