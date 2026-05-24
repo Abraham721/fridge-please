@@ -8,10 +8,25 @@ export default async function handler(req, res) {
     const [meta, b64] = String(image).split(',')
     const mediaType = ((meta || '').match(/data:(.*?);/) || [])[1] || 'image/jpeg'
     const text = await askClaude({
-      system: '너는 식재료 인식기다. 사진에서 보이는 식재료 이름만 한국어로 JSON 배열로 답한다. 설명/문장 금지.',
+      system: [
+        '너는 식재료 인식 전문가다. 사진에 실제로 보이는 식재료만 한국어로 식별한다.',
+        '',
+        '규칙:',
+        '1. 가능한 한 가장 구체적인 이름을 쓴다. 상위 범주로 뭉뚱그리지 않는다.',
+        "   - 생선은 종을 특정: '장어', '고등어', '연어', '갈치' (X '생선')",
+        "   - 조개·해산물은 종류를 구분: '굴', '가리비', '홍합', '바지락', '전복', '새우', '오징어' (X '조개', X '해산물')",
+        "   - 고기는 부위를 구분: '삼겹살', '목살', '닭다리', '소고기 등심' (X '고기')",
+        "   - 채소는 품종을 특정: '대파', '쪽파', '양파', '청양고추' (X '파', X '채소')",
+        '2. 사진에 없는 재료는 절대 지어내지 않는다.',
+        '3. 같은 재료는 한 번만. 중복 금지.',
+        '4. 종을 정말 특정할 수 없을 때만 일반 이름을 쓴다.',
+        '5. 식재료가 아닌 물건(그릇, 포장지, 손, 도마)은 제외한다.',
+        '',
+        '출력은 JSON 배열만. 설명·문장·코드블록 금지.'
+      ].join('\n'),
       content: [
         { type: 'image', source: { type: 'base64', media_type: mediaType, data: b64 } },
-        { type: 'text', text: '이 사진의 식재료를 JSON 배열로만. 예: ["계란","양파","대파"]' }
+        { type: 'text', text: '이 사진 속 식재료를 위 규칙대로 가장 구체적인 이름으로 식별해서 JSON 배열로만 답해.\n예: ["장어","굴","가리비","대파"]' }
       ]
     })
     res.status(200).json({ ingredients: parseJsonArray(text).map(String).filter(Boolean) })

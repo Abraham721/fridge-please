@@ -1,39 +1,51 @@
 import { askClaude, parseJsonArray } from '../lib/anthropic.js'
 import { CHEF_RECIPES } from '../lib/chefRecipes.js'
+import { retrieveCandidates } from '../lib/retrieve.js'
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' })
   try {
     const { ingredients, chef, style, fast } = req.body || {}
-    let chefLine = ''
+    const ings = Array.isArray(ingredients) ? ingredients.map(String).filter(Boolean) : []
+    const domains = (chef && Array.isArray(chef.domains) && chef.domains.length) ? chef.domains : null
+
+    // 1단 검색 + 2단 셰프 도메인 필터 — 후보가 적으면 점진적으로 완화(폴백)
+    let cands = retrieveCandidates(ings, domains, { maxMissing: 2, limit: 24 })
+    if (domains && cands.length < 5) cands = retrieveCandidates(ings, domains, { maxMissing: 3, limit: 24 })
+    if (cands.length < 3) cands = retrieveCandidates(ings, null, { maxMissing: 2, limit: 24 })
+    if (cands.length === 0) cands = retrieveCandidates(ings, null, { maxMissing: 3, limit: 20 })
+
+    // 후보 요약 (3단 모델 grounding용)
+    const candText = cands.map(c => `${c.name}[${c.cuisine}] 부족:${c.missing.length ? c.missing.join('·') : '없음'}`).join('\n')
+
+    // 셰프 페르소나 블록
+    let chefBlock = ''
     if (chef && chef.name) {
-      chefLine = ' 반드시 다음 셰프의 스타일로 추천해: ' + chef.name + ' — ' + (chef.hint || '') +
-        (chef.signatures && chef.signatures.length ? (' (시그니처: ' + chef.signatures.join(', ') + ')') : '')
-      if (chef.restaurant && chef.menu && chef.menu.length) {
-        chefLine += ' 그의 레스토랑 "' + chef.restaurant + '" 대표 메뉴: ' + chef.menu.join(', ') + '. 이 메뉴들의 결을 반영해.'
-      }
+      chefBlock = '\n[셰프] ' + chef.name + ' — ' + (chef.hint || chef.style || '')
+      if (chef.menu && chef.menu.length) chefBlock += '\n그의 레스토랑 "' + (chef.restaurant || '') + '" 대표 메뉴: ' + chef.menu.join(', ') + '.'
       const refs = (chef.id && CHEF_RECIPES[chef.id]) || []
-      if (refs.length) {
-        const refText = refs.slice(0, 3).map(r => r.name + '(' + (r.ingredients || []).slice(0, 6).join('·') + ')').join(' / ')
-        chefLine += ' 참고 레시피: ' + refText + '.'
-      }
-      chefLine += ' 이 셰프라면 주어진 재료로 어떻게 만들지 떠올려서 추천해.'
+      if (refs.length) chefBlock += '\n이 셰프의 실제 요리 예: ' + refs.slice(0, 3).map(r => r.name).join(', ') + '.'
     }
     const styleLine = (style && String(style).trim())
-      ? ' 사용자가 원하는 스타일/요구: "' + String(style).trim() + '". 이 요구를 반영하고, 필요하면 레시피를 그 요구에 맞게 변형해.'
+      ? '\n[사용자 요구] "' + String(style).trim() + '" — 이 요구를 반영해 변형해.'
       : ''
-    const fastLine = fast
-      ? ' 반드시 15분 이내에 조리 가능한 요리만 추천하고, 빠른 조리법으로 단계를 단순화해.'
-      : ''
+    const fastLine = fast ? '\n[제약] 반드시 15분 이내 조리 가능한 것만 고르고 단계를 단순화.' : ''
+
+    // 3단 — 후보 중 셰프 스타일에 맞게 골라 정밀 변형
+    const personaInstr = (chef && chef.name)
+      ? '아래 "후보 요리"는 사용자의 냉장고 재료로 실제 만들 수 있는 요리들이다. 이 중에서 ' + chef.name +
+        ' 셰프의 전문분야·스타일에 가장 잘 맞는 것을 골라, 그 셰프의 기법·재료감각·플레이팅으로 한 단계 정밀하게 변형해 제시해. 변형을 반영해 요리명을 살짝 바꿔도 좋다(원형은 알아볼 수 있게). 후보에 없는 엉뚱한 요리는 지어내지 마.'
+      : '아래 "후보 요리"는 사용자의 냉장고 재료로 실제 만들 수 있는 요리들이다. 이 중 냉장고로 만들기 좋은 것을 골라 제시해. 후보에 없는 요리는 지어내지 마.'
+
     const text = await askClaude({
-      system: '너는 요리 추천기다. 입력 재료로 만들 수 있는 요리를 JSON 배열로만 답한다. 한국어.',
+      system: '너는 셰프 페르소나로 요리를 추천·변형하는 전문 요리사다. 주어진 후보 요리만을 근거로, 한국어로 JSON 배열만 출력한다. 설명·문장 금지.',
       content: [{ type: 'text', text:
-        '가진 재료: ' + JSON.stringify(ingredients || []) + '.' + chefLine + styleLine + fastLine +
-        ' 만들 수 있는(또는 1~2개만 더 사면 되는) 요리 최대 5개를 ' +
-        '[{"name":요리명,"missing":[부족재료],"note":"한 줄 설명","time":예상조리시간(분, 정수),"steps":["단계1","단계2","단계3"]}] ' +
-        'JSON 배열로만 답해. 다른 말 금지.' }],
-      maxTokens: 1600
+        '냉장고 재료: ' + JSON.stringify(ings) + chefBlock + styleLine + fastLine +
+        '\n\n[후보 요리]\n' + (candText || '(후보 없음)') + '\n\n' + personaInstr +
+        ' 최대 5개를 [{"name":요리명,"missing":[냉장고에 없어 사야 할 재료],"note":"셰프 스타일이 드러나는 한 줄 설명","time":예상조리시간(분,정수),"steps":["단계1","단계2","단계3"]}] JSON 배열로만 답해. steps는 따라할 수 있게 3~5단계.' }],
+      maxTokens: 1800
     })
+
     const recipes = parseJsonArray(text).map(x => ({
       name: x && x.name ? String(x.name) : '',
       missing: x && Array.isArray(x.missing) ? x.missing.map(String) : [],
