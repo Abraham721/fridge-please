@@ -68,7 +68,11 @@ export default function App() {
     e.target.value = ''
     if (!file) return
     setError(''); setBusy('사진에서 재료 인식 중…'); setDetected([])
-    try { setDetected(await detectIngredients(await fileToSmallDataUrl(file))) }
+    try {
+      const items = await detectIngredients(await fileToSmallDataUrl(file))
+      setIngredients(prev => { const m = [...prev]; for (const it of items) if (!m.some(x => looseEq(x, it))) m.push(it); return m })
+      setDetected(items)
+    }
     catch (err) { setError('사진 인식 실패: ' + err.message) }
     finally { setBusy('') }
   }
@@ -144,9 +148,9 @@ export default function App() {
               </div>
               <label className="photo">📷 사진으로 재료 인식<input type="file" accept="image/*" onChange={onPhoto} hidden /></label>
               {detected.length > 0 && (
-                <div className="detected"><b>인식된 재료 (눌러서 추가)</b>
+                <div className="detected"><b>📷 사진에서 담았어요 (틀린 건 눌러서 빼기)</b>
                   <div className="chips">{detected.map(d => (
-                    <button className="chip add" key={d} onClick={() => { addIngredient(d); setDetected(detected.filter(x => x !== d)) }}>＋ {d}</button>
+                    <button className="chip" key={d} onClick={() => { removeIngredient(d); setDetected(detected.filter(x => x !== d)) }}><span className="em">{emo(d)}</span>{d} ✕</button>
                   ))}</div>
                 </div>
               )}

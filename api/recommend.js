@@ -17,6 +17,21 @@ export default async function handler(req, res) {
     if (cands.length < 3) cands = retrieveCandidates(ings, null, { maxMissing: 2, limit: 24 })
     if (cands.length === 0) cands = retrieveCandidates(ings, null, { maxMissing: 3, limit: 20 })
 
+    // 셰프를 골랐으면 그 셰프가 실제로 한 요리(시즌2 확정/유력 + 가정식) 중 냉장고 주재료와
+    // 맞는 것을 후보에 합친다 — 셰프 결의 요리가 재료로 직접 추천되도록.
+    if (chef && chef.id) {
+      const cui = chef.cuisine || ''
+      const rep = [
+        ...(CHEF_RECIPES[chef.id] || []).map(r => ({ name: r.name, cuisine: cui, ingredients: r.ingredients })),
+        ...((SEASON2_CHEFS[chef.id] && SEASON2_CHEFS[chef.id].dishes) || [])
+          .map(d => ({ name: d.dish.split(' — ')[0].replace(/\([^)]*\)/g, '').trim(), cuisine: cui, ingredients: d.ingredients }))
+      ]
+      const repCands = dishesToCandidates(rep, ings).filter(c => c.haveMain && c.haveMain.length > 0)
+      const seen = new Set(cands.map(c => c.name))
+      for (const rc of repCands) if (rc.name && !seen.has(rc.name)) { cands.push(rc); seen.add(rc.name) }
+      cands = cands.slice(0, 24)
+    }
+
     // 후보가 0개(냉장고가 비었거나 양념만 있을 때) — 셰프를 골랐다면 그 셰프의 "레퍼토리"
     // (도메인 일반요리 + 시즌2 확정 + 가정식 레시피)에서 매번 섞어 뽑아(회전) "추천 없음"을 방지.
     // sparse=true로 표시해 프론트가 "재료를 더 넣으면 더 잘 맞춰드려요" 안내를 띄운다.
@@ -70,9 +85,11 @@ export default async function handler(req, res) {
 
     // 3단 — 후보 중 셰프 스타일에 맞게 골라 정밀 변형
     const personaInstr = (chef && chef.name)
-      ? '아래 "후보 요리"는 사용자의 냉장고 재료로 실제 만들 수 있는 요리들이다. 이 중에서 ' + chef.name +
-        ' 셰프의 전문분야·스타일에 가장 잘 맞는 것을 골라, 그 셰프의 기법·재료감각·플레이팅으로 한 단계 정밀하게 변형해 제시해. 변형을 반영해 요리명을 살짝 바꿔도 좋다(원형은 알아볼 수 있게). 후보에 없는 엉뚱한 요리는 지어내지 마.'
-      : '아래 "후보 요리"는 사용자의 냉장고 재료로 실제 만들 수 있는 요리들이다. 이 중 냉장고로 만들기 좋은 것을 골라 제시해. 후보에 없는 요리는 지어내지 마.'
+      ? '아래 "후보 요리"는 사용자의 냉장고 재료로 만들 수 있는 요리들이다. ' + chef.name +
+        ' 셰프라면 이 재료로 무엇을 만들지 상상해, 후보의 재료를 살려 그 셰프의 기법·재료감각·플레이팅으로 재해석해 제시해. ' +
+        '후보가 그 셰프의 분야(양식/중식/일식 등)와 달라도 괜찮다 — 냉장고를 부탁해처럼, 재료를 그 셰프 스타일의 새 요리로 변형하면 된다(요리명도 그에 맞게 바꿔라). ' +
+        '핵심 재료는 냉장고에 있는 것을 쓰고, 절대 빈손으로 두지 말고 후보를 근거로 최소 3개(가능하면 5개)를 반드시 제시해. 다만 냉장고에 단서가 전혀 없는 생뚱맞은 요리를 새로 지어내진 마.'
+      : '아래 "후보 요리"는 사용자의 냉장고 재료로 만들 수 있는 요리들이다. 이 중 냉장고로 만들기 좋은 것을 골라 최소 3개 제시해. 후보에 없는 엉뚱한 요리는 지어내지 마.'
 
     const text = await askClaude({
       system: '너는 셰프 페르소나로 요리를 추천·변형하는 전문 요리사다. 주어진 후보 요리만을 근거로, 한국어로 JSON 배열만 출력한다. 설명·문장 금지.',
