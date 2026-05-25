@@ -40,7 +40,6 @@ export default function App() {
   const [input, setInput] = useState('')
   const [style, setStyle] = useState('')
   const [fast, setFast] = useState(false)
-  const [detected, setDetected] = useState([])
   const [busy, setBusy] = useState('')
   const [error, setError] = useState('')
   const [aiRecipes, setAiRecipes] = useState(null)
@@ -67,11 +66,10 @@ export default function App() {
     const file = e.target.files && e.target.files[0]
     e.target.value = ''
     if (!file) return
-    setError(''); setBusy('사진에서 재료 인식 중…'); setDetected([])
+    setError(''); setBusy('사진에서 재료 인식 중…')
     try {
       const items = await detectIngredients(await fileToSmallDataUrl(file))
       setIngredients(prev => { const m = [...prev]; for (const it of items) if (!m.some(x => looseEq(x, it))) m.push(it); return m })
-      setDetected(items)
     }
     catch (err) { setError('사진 인식 실패: ' + err.message) }
     finally { setBusy('') }
@@ -147,13 +145,6 @@ export default function App() {
                 <button className={'tgl' + (fast ? ' on' : '')} onClick={() => setFast(f => !f)}>⏱ 15분</button>
               </div>
               <label className="photo">📷 사진으로 재료 인식<input type="file" accept="image/*" onChange={onPhoto} hidden /></label>
-              {detected.length > 0 && (
-                <div className="detected"><b>📷 사진에서 담았어요 (틀린 건 눌러서 빼기)</b>
-                  <div className="chips">{detected.map(d => (
-                    <button className="chip" key={d} onClick={() => { removeIngredient(d); setDetected(detected.filter(x => x !== d)) }}><span className="em">{emo(d)}</span>{d} ✕</button>
-                  ))}</div>
-                </div>
-              )}
             </section>
 
             <section className="card">
