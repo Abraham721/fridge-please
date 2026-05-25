@@ -100,13 +100,24 @@ export default async function handler(req, res) {
       maxTokens: 1800
     })
 
-    const recipes = parseJsonArray(text).map(x => ({
+    let recipes = parseJsonArray(text).map(x => ({
       name: x && x.name ? String(x.name) : '',
       missing: x && Array.isArray(x.missing) ? x.missing.map(String) : [],
       note: x && x.note ? String(x.note) : '',
       time: x && (typeof x.time === 'number' || typeof x.time === 'string') ? String(x.time) : '',
       steps: x && Array.isArray(x.steps) ? x.steps.map(String) : []
     })).filter(x => x.name)
+    // 안전장치: 모델이 빈손(거부·파싱실패)이면 후보 상위를 노출. 후보는 retrieve가 TF-IDF로
+    // 정렬해 사용자의 주재료를 가장 잘 쓰는 요리가 앞에 오므로(예: 전복 → 전복죽) 관련성 유지.
+    // (API 호출 자체 실패는 catch에서 500 → 에러 배너로 별도 표시)
+    if (recipes.length === 0 && cands.length > 0) {
+      recipes = cands.slice(0, 5).map(c => ({
+        name: c.name,
+        missing: Array.isArray(c.missing) ? c.missing : [],
+        note: (chef && chef.name) ? (chef.name + ' 스타일로 — 누르면 상세 레시피') : '냉장고 재료 기반 추천',
+        time: '', steps: []
+      }))
+    }
     res.status(200).json({ recipes, sparse })
   } catch (e) { res.status(500).json({ error: e.message }) }
 }
