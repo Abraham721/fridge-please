@@ -100,13 +100,23 @@ export default async function handler(req, res) {
       maxTokens: 1800
     })
 
-    const recipes = parseJsonArray(text).map(x => ({
+    let recipes = parseJsonArray(text).map(x => ({
       name: x && x.name ? String(x.name) : '',
       missing: x && Array.isArray(x.missing) ? x.missing.map(String) : [],
       note: x && x.note ? String(x.note) : '',
       time: x && (typeof x.time === 'number' || typeof x.time === 'string') ? String(x.time) : '',
       steps: x && Array.isArray(x.steps) ? x.steps.map(String) : []
     })).filter(x => x.name)
+    // 안전장치: 후보가 있는데 모델이 빈손(거부·파싱실패 등)이면 후보 상위를 그대로 노출 → '추천 없음' 방지.
+    // (API 호출 자체가 실패하면 catch에서 500을 던져 별도 에러로 표시되므로, 여기는 '성공했지만 빈 결과'만 보정)
+    if (recipes.length === 0 && cands.length > 0) {
+      recipes = cands.slice(0, 5).map(c => ({
+        name: c.name,
+        missing: Array.isArray(c.missing) ? c.missing : [],
+        note: (chef && chef.name) ? (chef.name + ' 스타일로 — 누르면 상세 레시피') : '냉장고 재료 기반 추천',
+        time: '', steps: []
+      }))
+    }
     res.status(200).json({ recipes, sparse })
   } catch (e) { res.status(500).json({ error: e.message }) }
 }
