@@ -1,7 +1,7 @@
 import { askClaude, parseJsonArray } from '../lib/anthropic.js'
 import { CHEF_RECIPES } from '../lib/chefRecipes.js'
-import { retrieveCandidates } from '../lib/retrieve.js'
-import { season2Signatures } from '../lib/season2.js'
+import { retrieveCandidates, dishesToCandidates } from '../lib/retrieve.js'
+import { season2Signatures, SEASON2_CHEFS } from '../lib/season2.js'
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' })
@@ -15,6 +15,19 @@ export default async function handler(req, res) {
     if (domains && cands.length < 5) cands = retrieveCandidates(ings, domains, { maxMissing: 3, limit: 24 })
     if (cands.length < 3) cands = retrieveCandidates(ings, null, { maxMissing: 2, limit: 24 })
     if (cands.length === 0) cands = retrieveCandidates(ings, null, { maxMissing: 3, limit: 20 })
+
+    // 후보가 0개(냉장고가 비었거나 양념만 있는 경우 등) — 셰프를 골랐다면 그 셰프의
+    // 대표 요리(시즌2 확정 + 가정식 레시피)를 폴백 후보로 써서 "추천 없음"을 방지한다.
+    let fromChefSig = false
+    if (cands.length === 0 && chef && chef.id) {
+      const cui = chef.cuisine || ''
+      const s2dishes = ((SEASON2_CHEFS[chef.id] && SEASON2_CHEFS[chef.id].dishes) || [])
+        .filter(d => d.conf === 'high').slice(0, 8)
+        .map(d => ({ name: d.dish.split(' — ')[0].replace(/\([^)]*\)/g, '').trim(), cuisine: cui, ingredients: d.ingredients }))
+      const refDishes = (CHEF_RECIPES[chef.id] || []).map(r => ({ name: r.name, cuisine: cui, ingredients: r.ingredients }))
+      cands = dishesToCandidates([...refDishes, ...s2dishes], ings)
+      fromChefSig = cands.length > 0
+    }
 
     // 후보 요약 (3단 모델 grounding용) — 부족 재료를 '주재료'와 '양념'으로 분리해 매칭 품질을 높인다.
     const candText = cands.map(c => {
@@ -37,6 +50,7 @@ export default async function handler(req, res) {
       ? '\n[사용자 요구] "' + String(style).trim() + '" — 이 요구를 반영해 변형해.'
       : ''
     const fastLine = fast ? '\n[제약] 반드시 15분 이내 조리 가능한 것만 고르고 단계를 단순화.' : ''
+    const sigLine = fromChefSig ? '\n[안내] 냉장고에 마땅한 재료가 없어 이 셰프의 대표 요리를 후보로 제시한다. 사야 할 재료(missing)가 많아도 괜찮으니, 셰프의 대표 메뉴를 추천하라.' : ''
     // 사진 재료 ↔ 요리 매칭 규칙: 주재료는 냉장고(사진)에서, 양념은 사서 추가.
     const matchRule = '\n[매칭 규칙] 주재료(고기·해산물·채소·면·밥 등)는 가능한 한 냉장고(사진)에 있는 재료를 주인공으로 삼아라.' +
       ' 후보의 "부족주재료"가 없거나 적은 요리를 우선 고른다. "missing"(살 재료)에는 주로 양념·조미료를 넣고,' +
@@ -51,7 +65,7 @@ export default async function handler(req, res) {
     const text = await askClaude({
       system: '너는 셰프 페르소나로 요리를 추천·변형하는 전문 요리사다. 주어진 후보 요리만을 근거로, 한국어로 JSON 배열만 출력한다. 설명·문장 금지.',
       content: [{ type: 'text', text:
-        '냉장고 재료: ' + JSON.stringify(ings) + chefBlock + styleLine + fastLine +
+        '냉장고 재료: ' + JSON.stringify(ings) + chefBlock + styleLine + fastLine + sigLine +
         '\n\n[후보 요리]\n' + (candText || '(후보 없음)') + '\n\n' + personaInstr + matchRule +
         ' 최대 5개를 [{"name":요리명,"missing":[냉장고에 없어 사야 할 재료 — 주로 양념·조미료, 꼭 필요한 주재료만],"note":"셰프 스타일이 드러나는 한 줄 설명","time":예상조리시간(분,정수),"steps":["단계1","단계2","단계3"]}] JSON 배열로만 답해. steps는 따라할 수 있게 3~5단계.' }],
       maxTokens: 1800
