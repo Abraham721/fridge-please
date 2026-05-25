@@ -80,6 +80,7 @@ body{
 .banner{border-radius:12px;padding:8px 11px;font-size:12.5px;margin-bottom:8px;text-align:center}
 .banner.busy{background:var(--mint);color:#3a7a6a}
 .banner.err{background:#ffdce8;color:#c0467f;cursor:pointer}
+.banner.note{background:#fff7d6;color:#9a7b1a}
 /* results modal sheet */
 .modal{position:fixed;inset:0;background:rgba(120,80,120,.35);display:flex;align-items:flex-end;justify-content:center;z-index:50}
 .sheet{width:100%;max-width:412px;max-height:82vh;overflow:auto;background:#fff;border-radius:24px 24px 0 0;border-top:6px solid #ffd9ee;padding:14px 14px 22px;box-shadow:0 -10px 30px rgba(180,120,170,.3)}

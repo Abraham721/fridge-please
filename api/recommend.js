@@ -1,6 +1,7 @@
 import { askClaude, parseJsonArray } from '../lib/anthropic.js'
 import { CHEF_RECIPES } from '../lib/chefRecipes.js'
 import { retrieveCandidates, dishesToCandidates } from '../lib/retrieve.js'
+import { RECIPE_DB } from '../lib/recipeDB.js'
 import { season2Signatures, SEASON2_CHEFS } from '../lib/season2.js'
 
 export default async function handler(req, res) {
@@ -16,17 +17,28 @@ export default async function handler(req, res) {
     if (cands.length < 3) cands = retrieveCandidates(ings, null, { maxMissing: 2, limit: 24 })
     if (cands.length === 0) cands = retrieveCandidates(ings, null, { maxMissing: 3, limit: 20 })
 
-    // 후보가 0개(냉장고가 비었거나 양념만 있는 경우 등) — 셰프를 골랐다면 그 셰프의
-    // 대표 요리(시즌2 확정 + 가정식 레시피)를 폴백 후보로 써서 "추천 없음"을 방지한다.
-    let fromChefSig = false
+    // 후보가 0개(냉장고가 비었거나 양념만 있을 때) — 셰프를 골랐다면 그 셰프의 "레퍼토리"
+    // (도메인 일반요리 + 시즌2 확정 + 가정식 레시피)에서 매번 섞어 뽑아(회전) "추천 없음"을 방지.
+    // sparse=true로 표시해 프론트가 "재료를 더 넣으면 더 잘 맞춰드려요" 안내를 띄운다.
+    let sparse = false
     if (cands.length === 0 && chef && chef.id) {
       const cui = chef.cuisine || ''
+      const doms = (Array.isArray(chef.domains) && chef.domains.length) ? chef.domains : (cui ? [cui] : [])
+      const domainDishes = RECIPE_DB.filter(r => doms.includes(r.cuisine))
+        .map(r => ({ name: r.name, cuisine: r.cuisine, ingredients: r.ingredients }))
       const s2dishes = ((SEASON2_CHEFS[chef.id] && SEASON2_CHEFS[chef.id].dishes) || [])
-        .filter(d => d.conf === 'high').slice(0, 8)
+        .filter(d => d.conf === 'high')
         .map(d => ({ name: d.dish.split(' — ')[0].replace(/\([^)]*\)/g, '').trim(), cuisine: cui, ingredients: d.ingredients }))
       const refDishes = (CHEF_RECIPES[chef.id] || []).map(r => ({ name: r.name, cuisine: cui, ingredients: r.ingredients }))
-      cands = dishesToCandidates([...refDishes, ...s2dishes], ings)
-      fromChefSig = cands.length > 0
+      // 합치고 이름 중복 제거 → 셔플(회전) → 14개로 추림
+      const seen = new Set(); const pool = []
+      for (const d of [...refDishes, ...s2dishes, ...domainDishes]) {
+        if (!d.name || seen.has(d.name)) continue
+        seen.add(d.name); pool.push(d)
+      }
+      for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [pool[i], pool[j]] = [pool[j], pool[i]] }
+      cands = dishesToCandidates(pool.slice(0, 14), ings)
+      sparse = cands.length > 0
     }
 
     // 후보 요약 (3단 모델 grounding용) — 부족 재료를 '주재료'와 '양념'으로 분리해 매칭 품질을 높인다.
@@ -50,7 +62,7 @@ export default async function handler(req, res) {
       ? '\n[사용자 요구] "' + String(style).trim() + '" — 이 요구를 반영해 변형해.'
       : ''
     const fastLine = fast ? '\n[제약] 반드시 15분 이내 조리 가능한 것만 고르고 단계를 단순화.' : ''
-    const sigLine = fromChefSig ? '\n[안내] 냉장고에 마땅한 재료가 없어 이 셰프의 대표 요리를 후보로 제시한다. 사야 할 재료(missing)가 많아도 괜찮으니, 셰프의 대표 메뉴를 추천하라.' : ''
+    const sigLine = sparse ? '\n[안내] 냉장고에 마땅한 재료가 없어 이 셰프의 레퍼토리에서 후보를 제시한다. 사야 할 재료(missing)가 많아도 괜찮으니, 후보 중 서로 다른 결의 요리를 다양하게 추천하라.' : ''
     // 사진 재료 ↔ 요리 매칭 규칙: 주재료는 냉장고(사진)에서, 양념은 사서 추가.
     const matchRule = '\n[매칭 규칙] 주재료(고기·해산물·채소·면·밥 등)는 가능한 한 냉장고(사진)에 있는 재료를 주인공으로 삼아라.' +
       ' 후보의 "부족주재료"가 없거나 적은 요리를 우선 고른다. "missing"(살 재료)에는 주로 양념·조미료를 넣고,' +
@@ -78,6 +90,6 @@ export default async function handler(req, res) {
       time: x && (typeof x.time === 'number' || typeof x.time === 'string') ? String(x.time) : '',
       steps: x && Array.isArray(x.steps) ? x.steps.map(String) : []
     })).filter(x => x.name)
-    res.status(200).json({ recipes })
+    res.status(200).json({ recipes, sparse })
   } catch (e) { res.status(500).json({ error: e.message }) }
 }

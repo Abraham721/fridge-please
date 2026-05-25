@@ -20,7 +20,7 @@ export async function detectIngredients(dataUrl) {
 export async function recommendRecipes(ingredients, chef, opts) {
   const o = opts || {}
   const d = await postJson('/api/recommend', { ingredients, chef: chef || null, style: o.style || '', fast: !!o.fast })
-  return (d && d.recipes) || []
+  return { recipes: (d && d.recipes) || [], sparse: !!(d && d.sparse) }
 }
 export async function dishIngredients(dish) {
   const d = await postJson('/api/dish', { dish })

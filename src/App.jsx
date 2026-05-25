@@ -44,6 +44,7 @@ export default function App() {
   const [busy, setBusy] = useState('')
   const [error, setError] = useState('')
   const [aiRecipes, setAiRecipes] = useState(null)
+  const [sparse, setSparse] = useState(false)
   const [showResults, setShowResults] = useState(false)
   const [detail, setDetail] = useState(null)
   const [detailBusy, setDetailBusy] = useState(false)
@@ -73,9 +74,9 @@ export default function App() {
   }
 
   async function onAiRecommend() {
-    setError(''); setShowResults(true); setAiRecipes(null); setDetail(null)
+    setError(''); setShowResults(true); setAiRecipes(null); setDetail(null); setSparse(false)
     setBusy((chef ? (chef.name + ' 추천 중') : 'AI 추천 중') + (fast ? ' (15분 이내)' : '') + '…')
-    try { setAiRecipes(await recommendRecipes(ingredients, chef, { style, fast })) }
+    try { const res = await recommendRecipes(ingredients, chef, { style, fast }); setAiRecipes(res.recipes); setSparse(res.sparse) }
     catch (err) { setError('추천 실패: ' + err.message); setShowResults(false) }
     finally { setBusy('') }
   }
@@ -225,6 +226,7 @@ export default function App() {
               <>
                 <div className="bar"><h2>✦ {chef ? chef.name + ' 추천' : 'AI 추천'}{fast ? ' · 15분' : ''}</h2><button className="close" onClick={closeResults}>✕</button></div>
                 {busy && <div className="banner busy">{busy} 🍳</div>}
+                {sparse && <div className="banner note">🧊 냉장고에 재료가 거의 없어 {chef ? chef.name + ' 셰프의' : ''} 대표 메뉴를 보여드려요. 재료를 더 넣으면 냉장고에 맞춰 더 정확히 추천해요!</div>}
                 {aiRecipes && aiRecipes.length === 0 && <p className="hint">추천이 없어요. 재료를 더 넣거나 조건을 바꿔보세요.</p>}
                 {aiRecipes && aiRecipes.map((r, i) => (
                   <div className="rec clickable" key={i} onClick={() => openDetail(r.name)}>
