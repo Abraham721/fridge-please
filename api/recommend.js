@@ -1,6 +1,6 @@
 import { askClaude, parseJsonArray } from '../lib/anthropic.js'
 import { CHEF_RECIPES } from '../lib/chefRecipes.js'
-import { retrieveCandidates, dishesToCandidates } from '../lib/retrieve.js'
+import { retrieveCandidates, dishesToCandidates, mainIngredients } from '../lib/retrieve.js'
 import { RECIPE_DB } from '../lib/recipeDB.js'
 import { season2Signatures, SEASON2_CHEFS } from '../lib/season2.js'
 
@@ -9,6 +9,7 @@ export default async function handler(req, res) {
   try {
     const { ingredients, chef, style, fast } = req.body || {}
     const ings = Array.isArray(ingredients) ? ingredients.map(String).filter(Boolean) : []
+    const mains = mainIngredients(ings)   // 주재료(양념 제외) — 추천 앵커
     const domains = (chef && Array.isArray(chef.domains) && chef.domains.length) ? chef.domains : null
 
     // 1단 검색 + 2단 셰프 도메인 필터 — 후보가 적으면 점진적으로 완화(폴백)
@@ -78,45 +79,34 @@ export default async function handler(req, res) {
       : ''
     const fastLine = fast ? '\n[제약] 반드시 15분 이내 조리 가능한 것만 고르고 단계를 단순화.' : ''
     const sigLine = sparse ? '\n[안내] 냉장고에 마땅한 재료가 없어 이 셰프의 레퍼토리에서 후보를 제시한다. 사야 할 재료(missing)가 많아도 괜찮으니, 후보 중 서로 다른 결의 요리를 다양하게 추천하라.' : ''
-    // 사진 재료 ↔ 요리 매칭 규칙: 주재료는 냉장고(사진)에서, 양념은 사서 추가.
-    const matchRule = '\n[매칭 규칙] 주재료(고기·해산물·채소·면·밥 등)는 가능한 한 냉장고(사진)에 있는 재료를 주인공으로 삼아라.' +
-      ' 후보의 "부족주재료"가 없거나 적은 요리를 우선 고른다. "missing"(살 재료)에는 주로 양념·조미료를 넣고,' +
-      ' 주재료는 사진에 정말 없고 그 요리에 꼭 필요할 때만 최소한으로 추가해라. 냉장고에 이미 있는 재료는 missing에 넣지 마.'
-
     // 3단 — 후보 중 셰프 스타일에 맞게 골라 정밀 변형
     const personaInstr = (chef && chef.name)
-      ? '아래 "후보 요리"는 사용자의 냉장고 재료로 만들 수 있는 요리들이다. ' + chef.name +
-        ' 셰프라면 이 재료로 무엇을 만들지 상상해, 후보의 재료를 살려 그 셰프의 기법·재료감각·플레이팅으로 재해석해 제시해. ' +
-        '후보가 그 셰프의 분야(양식/중식/일식 등)와 달라도 괜찮다 — 냉장고를 부탁해처럼, 재료를 그 셰프 스타일의 새 요리로 변형하면 된다(요리명도 그에 맞게 바꿔라). ' +
-        '핵심 재료는 냉장고에 있는 것을 쓰고, 절대 빈손으로 두지 말고 후보를 근거로 최소 3개(가능하면 5개)를 반드시 제시해. 다만 냉장고에 단서가 전혀 없는 생뚱맞은 요리를 새로 지어내진 마.'
-      : '아래 "후보 요리"는 사용자의 냉장고 재료로 만들 수 있는 요리들이다. 이 중 냉장고로 만들기 좋은 것을 골라 최소 3개 제시해. 후보에 없는 엉뚱한 요리는 지어내지 마.'
+      ? '사용자 냉장고의 주재료를 주인공으로, ' + chef.name + ' 셰프 스타일의 요리를 추천하라. ' +
+        '(1) 반드시 사용자가 가진 주재료(특히 고기·해산물·생선)를 메인으로 쓰는 요리를 골라라 — 사용자의 주재료를 하나도 안 쓰는 요리는 절대 추천하지 마라. ' +
+        '(2) 가능하면 여러 주재료를 함께 살려라(예: 조개·가리비·전복이 있으면 한 접시 해물 요리로 묶어라). ' +
+        '(3) 주재료를 살릴 마땅한 요리가 없으면, 그 주재료를 주인공으로 하되 부족한 핵심 재료 1~2개를 missing에 넣어 "이걸 추가하면 이 요리" 식으로 제안하라. ' +
+        '(4) 참고 후보는 영감일 뿐 — 주재료와 안 맞으면 무시하라. 단, 사용자가 가진 재료에 근거가 전혀 없는 엉뚱한 요리를 지어내진 마라. ' +
+        '최소 3개(가능하면 5개)를 ' + chef.name + ' 스타일로 제시하고, 변형에 맞게 요리명을 바꿔도 좋다.'
+      : '사용자 냉장고의 주재료를 주인공으로 하는 요리를 추천하라. 주재료를 메인으로 쓰는 요리만 고르고, 마땅찮으면 핵심 재료 1~2개를 missing에 넣어 "이걸 추가하면 이 요리" 식으로 제안하라. 최소 3개 제시. 근거 없는 요리는 지어내지 마라.'
 
     const text = await askClaude({
-      system: '너는 셰프 페르소나로 요리를 추천·변형하는 전문 요리사다. 주어진 후보 요리만을 근거로, 한국어로 JSON 배열만 출력한다. 설명·문장 금지.',
+      system: '너는 셰프 페르소나로 요리를 추천·변형하는 전문 요리사다. 사용자가 실제로 가진 재료(특히 주재료)를 주인공으로 삼아, 한국어로 JSON 배열만 출력한다. 사용자가 없는 재료를 주재료로 지어내지 말 것. 설명·문장 금지.',
       content: [{ type: 'text', text:
-        '냉장고 재료: ' + JSON.stringify(ings) + chefBlock + styleLine + fastLine + sigLine +
-        '\n\n[후보 요리]\n' + (candText || '(후보 없음)') + '\n\n' + personaInstr + matchRule +
-        ' 최대 5개를 [{"name":요리명,"missing":[냉장고에 없어 사야 할 재료 — 주로 양념·조미료, 꼭 필요한 주재료만],"note":"셰프 스타일이 드러나는 한 줄 설명","time":예상조리시간(분,정수),"steps":["단계1","단계2","단계3"]}] JSON 배열로만 답해. steps는 따라할 수 있게 3~5단계.' }],
+        '[냉장고 전체] ' + JSON.stringify(ings) +
+        '\n[주재료(주인공 후보)] ' + (mains.length ? mains.join(', ') : '(없음)') + ' — 이 중 가장 메인으로 적합한 재료를 주인공으로 삼아라(고기·해산물·생선을 채소보다 우선, 여러 개면 함께 살려라).' +
+        chefBlock + styleLine + fastLine + sigLine +
+        '\n\n[참고 후보(영감용)]\n' + (candText || '(없음)') + '\n\n' + personaInstr +
+        ' 최대 5개를 [{"name":요리명,"missing":[냉장고에 없어 사야 할 재료 — 양념과 꼭 필요한 핵심 재료],"note":"셰프 스타일이 드러나는 한 줄 설명","time":예상조리시간(분,정수),"steps":["단계1","단계2","단계3"]}] JSON 배열로만 답해. steps는 따라할 수 있게 3~5단계.' }],
       maxTokens: 1800
     })
 
-    let recipes = parseJsonArray(text).map(x => ({
+    const recipes = parseJsonArray(text).map(x => ({
       name: x && x.name ? String(x.name) : '',
       missing: x && Array.isArray(x.missing) ? x.missing.map(String) : [],
       note: x && x.note ? String(x.note) : '',
       time: x && (typeof x.time === 'number' || typeof x.time === 'string') ? String(x.time) : '',
       steps: x && Array.isArray(x.steps) ? x.steps.map(String) : []
     })).filter(x => x.name)
-    // 안전장치: 후보가 있는데 모델이 빈손(거부·파싱실패 등)이면 후보 상위를 그대로 노출 → '추천 없음' 방지.
-    // (API 호출 자체가 실패하면 catch에서 500을 던져 별도 에러로 표시되므로, 여기는 '성공했지만 빈 결과'만 보정)
-    if (recipes.length === 0 && cands.length > 0) {
-      recipes = cands.slice(0, 5).map(c => ({
-        name: c.name,
-        missing: Array.isArray(c.missing) ? c.missing : [],
-        note: (chef && chef.name) ? (chef.name + ' 스타일로 — 누르면 상세 레시피') : '냉장고 재료 기반 추천',
-        time: '', steps: []
-      }))
-    }
     res.status(200).json({ recipes, sparse })
   } catch (e) { res.status(500).json({ error: e.message }) }
 }
