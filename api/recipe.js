@@ -1,5 +1,6 @@
 import { askClaude } from '../lib/anthropic.js'
 import { SEASON2_CHEFS } from '../lib/season2.js'
+import { estimateNutrition } from '../lib/nutrition.js'
 
 function parseObj(text) {
   let t = String(text || '').trim().replace(/^```(json)?/i, '').replace(/```$/i, '').trim()
@@ -38,6 +39,7 @@ export default async function handler(req, res) {
         time: '',
         ingredients: (stored.ingredients || []).map(it => ({ item: String(it), amount: '' })),
         steps: stored.steps.map(String),
+        nutrition: estimateNutrition(stored.ingredients || []),
         tip: chef && chef.name ? (chef.name + ' 셰프가 시즌2에서 실제로 만든 요리예요.') : ''
       })
     }
@@ -65,6 +67,7 @@ export default async function handler(req, res) {
         ? o.ingredients.map(x => ({ item: x && x.item ? String(x.item) : String(x || ''), amount: x && x.amount ? String(x.amount) : '' })).filter(x => x.item)
         : [],
       steps: Array.isArray(o.steps) ? o.steps.map(String) : [],
+      nutrition: estimateNutrition((Array.isArray(o.ingredients) ? o.ingredients.map(x => x && x.item ? String(x.item) : String(x || '')) : [])),
       tip: o.tip ? String(o.tip) : ''
     })
   } catch (e) { res.status(500).json({ error: e.message }) }

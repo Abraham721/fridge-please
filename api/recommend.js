@@ -2,6 +2,7 @@ import { askClaude, parseJsonArray } from '../lib/anthropic.js'
 import { CHEF_RECIPES } from '../lib/chefRecipes.js'
 import { retrieveCandidates, dishesToCandidates, mainIngredients } from '../lib/retrieve.js'
 import { RECIPE_DB } from '../lib/recipeDB.js'
+import { estimateNutrition } from '../lib/nutrition.js'
 import { season2Signatures, SEASON2_CHEFS } from '../lib/season2.js'
 
 export default async function handler(req, res) {
@@ -131,7 +132,11 @@ export default async function handler(req, res) {
       note: x && x.note ? String(x.note) : '',
       time: x && (typeof x.time === 'number' || typeof x.time === 'string') ? String(x.time) : '',
       steps: x && Array.isArray(x.steps) ? x.steps.map(String) : []
-    })).filter(x => x.name)
+    })).filter(x => x.name).map(r => {
+      const cand = cands.find(c => c.name === r.name)
+      const ings = cand && cand.ingredients ? cand.ingredients : []
+      return { ...r, nutrition: estimateNutrition(ings) }
+    })
     // 안전장치: 모델이 빈손(거부·파싱실패)이면 후보 상위를 노출. 후보는 retrieve가 TF-IDF로
     // 정렬해 사용자의 주재료를 가장 잘 쓰는 요리가 앞에 오므로(예: 전복 → 전복죽) 관련성 유지.
     // (API 호출 자체 실패는 catch에서 500 → 에러 배너로 별도 표시)

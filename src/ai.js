@@ -17,6 +17,10 @@ export async function detectIngredients(dataUrl) {
   const d = await postJson('/api/detect', { image: dataUrl })
   return (d && d.ingredients) || []
 }
+export async function detectReceipt(dataUrl) {
+  const d = await postJson('/api/receipt', { image: dataUrl })
+  return (d && d.ingredients) || []
+}
 export async function recommendRecipes(ingredients, chef, opts) {
   const o = opts || {}
   const d = await postJson('/api/recommend', { ingredients, chef: chef || null, style: o.style || '', fast: !!o.fast })

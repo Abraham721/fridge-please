@@ -1,10 +1,12 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useRef } from 'react'
 import { RECIPES, findRecipe, looseEq } from './recipes.js'
 import { CHEFS, findChef } from './chefs.js'
-import { detectIngredients, recommendRecipes, dishIngredients, recipeDetail } from './ai.js'
+import { parseVoiceIngredients } from './voice.js'
+import { detectIngredients, detectReceipt, recommendRecipes, dishIngredients, recipeDetail } from './ai.js'
 
 const LS_ING = 'fp_ingredients'
 const LS_CHEF = 'fp_chef'
+const LS_META = 'fp_fridge_meta'
 const load = (k, f) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : f } catch (e) { return f } }
 const fileToDataUrl = (file) => new Promise((res, rej) => {
   const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(file)
@@ -33,6 +35,20 @@ const DECOS = [
   { e: '🌈', top: '46%', left: '5%' }, { e: '🎀', top: '92%', left: '8%' }
 ]
 
+function ChefLoader({ chef, message }) {
+  const emoji = (chef && chef.emoji) || '👨‍🍳'
+  return (
+    <div className="chefloader">
+      <div className="cl-stage" aria-hidden="true">
+        <span className="cl-chef">{emoji}</span>
+        <span className="cl-pan">🍳</span>
+        <span className="cl-steam"><span>·</span><span>·</span><span>·</span></span>
+      </div>
+      <div className="cl-msg">{message}<span className="cl-dots"></span></div>
+    </div>
+  )
+}
+
 export default function App() {
   const [tab, setTab] = useState('fridge')
   const [ingredients, setIngredients] = useState(() => load(LS_ING, []))
@@ -42,6 +58,7 @@ export default function App() {
   const [fast, setFast] = useState(false)
   const [busy, setBusy] = useState('')
   const [error, setError] = useState('')
+  const [fridgeMeta, setFridgeMeta] = useState(() => load(LS_META, {}))
   const [aiRecipes, setAiRecipes] = useState(null)
   const [sparse, setSparse] = useState(false)
   const [showResults, setShowResults] = useState(false)
@@ -52,6 +69,7 @@ export default function App() {
 
   useEffect(() => { localStorage.setItem(LS_ING, JSON.stringify(ingredients)) }, [ingredients])
   useEffect(() => { localStorage.setItem(LS_CHEF, JSON.stringify(chefId)) }, [chefId])
+  useEffect(() => { localStorage.setItem(LS_META, JSON.stringify(fridgeMeta)) }, [fridgeMeta])
 
   const chef = findChef(chefId)
 
@@ -59,8 +77,9 @@ export default function App() {
     const n = (name || '').trim()
     if (!n) return
     setIngredients(prev => (prev.some(x => looseEq(x, n)) ? prev : [...prev, n]))
+    setFridgeMeta(prev => prev[n] ? prev : { ...prev, [n]: { addedAt: new Date().toISOString().slice(0,10) } })
   }
-  const removeIngredient = (name) => setIngredients(prev => prev.filter(x => x !== name))
+  const removeIngredient = (name) => { setIngredients(prev => prev.filter(x => x !== name)); setFridgeMeta(prev => { const m={...prev}; delete m[name]; return m }) }
 
   async function onPhoto(e) {
     const file = e.target.files && e.target.files[0]
@@ -72,6 +91,21 @@ export default function App() {
       setIngredients(prev => { const m = [...prev]; for (const it of items) if (!m.some(x => looseEq(x, it))) m.push(it); return m })
     }
     catch (err) { setError('사진 인식 실패: ' + err.message) }
+    finally { setBusy('') }
+  }
+
+  async function onReceipt(e) {
+    const file = e.target.files && e.target.files[0]
+    e.target.value = ''
+    if (!file) return
+    setError(''); setBusy('영수증에서 식재료 읽는 중…')
+    try {
+      const items = await detectReceipt(await fileToSmallDataUrl(file))
+      setIngredients(prev => { const m = [...prev]; for (const it of items) if (!m.some(x => looseEq(x, it))) m.push(it); return m })
+      const today = new Date().toISOString().slice(0,10)
+      setFridgeMeta(prev => { const m = { ...prev }; for (const it of items) if (!m[it]) m[it] = { addedAt: today }; return m })
+    }
+    catch (err) { setError('영수증 인식 실패: ' + err.message) }
     finally { setBusy('') }
   }
 
@@ -121,14 +155,14 @@ export default function App() {
           <button className={tab === 'cook' ? 'on' : ''} onClick={() => setTab('cook')}><span className="em">🍳</span>만들고 싶어</button>
         </nav>
 
-        {busy && !showResults && <div className="banner busy">{busy}</div>}
+        {busy && !showResults && <ChefLoader chef={chef} message={busy} />}
         {error && <div className="banner err" onClick={() => setError('')}>{error} ✕</div>}
 
         <div className="tabbody">
         {tab === 'fridge' && (
           <>
             <section className="card">
-              <div className="h">🧺 내 냉장고 재료</div>
+              <div className="h">🧊 우리집 냉장고 <span className="hint-mini">— 재료를 모아두면 추천이 더 정확해져요</span></div>
               <div className="addrow">
                 <input value={input} onChange={e => setInput(e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter') { addIngredient(input); setInput('') } }}
@@ -136,15 +170,44 @@ export default function App() {
                 <button onClick={() => { addIngredient(input); setInput('') }}>추가</button>
               </div>
               <div className="chips">
-                {ingredients.map(it => (
-                  <span className="chip" key={it}><span className="em">{emo(it)}</span>{it}<button onClick={() => removeIngredient(it)}>✕</button></span>
-                ))}
+                {ingredients.map(it => {
+                  const meta = fridgeMeta[it] || {}
+                  const exp = meta.expireAt
+                  const today = new Date(); today.setHours(0,0,0,0)
+                  let dleft = null, expCls = ''
+                  if (exp) {
+                    const d = new Date(exp); d.setHours(0,0,0,0)
+                    dleft = Math.round((d - today) / 86400000)
+                    expCls = dleft < 0 ? ' exp-over' : (dleft <= 2 ? ' exp-soon' : '')
+                  }
+                  return (
+                    <span className={'chip'+expCls} key={it}>
+                      <span className="em">{emo(it)}</span>{it}
+                      {dleft != null && <span className="exp-d">D{dleft >= 0 ? '-' : '+'}{Math.abs(dleft)}</span>}
+                      <button className="chip-edit" onClick={() => {
+                        const cur = (fridgeMeta[it] && fridgeMeta[it].expireAt) || ''
+                        const v = window.prompt(it + ' 유통기한 (YYYY-MM-DD) 또는 빈칸으로 삭제:', cur)
+                        if (v === null) return
+                        setFridgeMeta(prev => {
+                          const m = { ...prev }
+                          if (v.trim()) m[it] = { ...(m[it]||{}), expireAt: v.trim() }
+                          else { if (m[it]) { delete m[it].expireAt; if (!Object.keys(m[it]).length) delete m[it] } }
+                          return m
+                        })
+                      }} title="유통기한">📅</button>
+                      <button onClick={() => removeIngredient(it)}>✕</button>
+                    </span>
+                  )
+                })}
               </div>
               <div className="styrow">
                 <input className="styin" value={style} onChange={e => setStyle(e.target.value)} placeholder="원하는 스타일 (매콤·다이어트·비건…)" />
                 <button className={'tgl' + (fast ? ' on' : '')} onClick={() => setFast(f => !f)}>⏱ 15분</button>
               </div>
-              <label className="photo">📷 사진으로 재료 인식<input type="file" accept="image/*" onChange={onPhoto} hidden /></label>
+              <div className="photo-row">
+                <label className="photo">📷 사진으로 재료 인식<input type="file" accept="image/*" onChange={onPhoto} hidden /></label>
+                <label className="photo photo-receipt">🧾 영수증 인식<input type="file" accept="image/*" onChange={onReceipt} hidden /></label>
+              </div>
             </section>
 
             <section className="card">
@@ -203,7 +266,7 @@ export default function App() {
             {detail ? (
               <>
                 <div className="bar"><button className="close" onClick={() => setDetail(null)}>←</button><h2>{detail.name}{detail.time ? ' · ' + detail.time + '분' : ''}</h2></div>
-                {detailBusy ? <div className="banner busy">상세 레시피 만드는 중… 🍳</div> : (
+                {detailBusy ? <ChefLoader chef={chef} message="상세 레시피 만드는 중" /> : (
                   <>
                     <div className="leg"><span><span className="dot have"></span>집에 있는 것</span><span><span className="dot buy"></span>사야 할 것</span></div>
                     <div className="chips ings">
@@ -212,6 +275,14 @@ export default function App() {
                         return <span key={i} className={'ing ' + (have ? 'have' : 'buy')}>{x.item}{x.amount ? ' ' + x.amount : ''}</span>
                       })}
                     </div>
+                    {detail.nutrition && detail.nutrition.kcal > 0 && (
+                      <div className="nuts">
+                        <span className="nuts-k">🔥 {detail.nutrition.kcal} kcal</span>
+                        <span>단백질 {detail.nutrition.protein}g</span>
+                        <span>탄수 {detail.nutrition.carbs}g</span>
+                        <span>지방 {detail.nutrition.fat}g</span>
+                      </div>
+                    )}
                     <ol className="steps big">{detail.steps.map((s, i) => <li key={i}>{s}</li>)}</ol>
                     {detail.tip && <p className="tip">💡 {detail.tip}</p>}
                   </>
@@ -220,7 +291,7 @@ export default function App() {
             ) : (
               <>
                 <div className="bar"><h2>✦ {chef ? chef.name + ' 추천' : 'AI 추천'}{fast ? ' · 15분' : ''}</h2><button className="close" onClick={closeResults}>✕</button></div>
-                {busy && <div className="banner busy">{busy} 🍳</div>}
+                {busy && <ChefLoader chef={chef} message={busy} />}
                 {sparse && <div className="banner note">🧊 냉장고에 재료가 거의 없어 {chef ? chef.name + ' 셰프의' : ''} 대표 메뉴를 보여드려요. 재료를 더 넣으면 냉장고에 맞춰 더 정확히 추천해요!</div>}
                 {aiRecipes && aiRecipes.length === 0 && <p className="hint">추천이 없어요. 재료를 더 넣거나 조건을 바꿔보세요.</p>}
                 {aiRecipes && aiRecipes.map((r, i) => (
@@ -229,6 +300,7 @@ export default function App() {
                       <span className="nm">🍲 {r.name}{r.note ? <em> — {r.note}</em> : null}</span>
                       <span style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
                         {r.time ? <span className="time">⏱{r.time}분</span> : null}
+                        {r.nutrition && r.nutrition.kcal > 0 ? <span className="kcal">🔥{r.nutrition.kcal}kcal</span> : null}
                         {r.missing.length > 0 ? <span className="miss">+{r.missing.join(', ')}</span> : <span className="ok">재료 OK</span>}
                       </span>
                     </div>
