@@ -12,14 +12,12 @@ export default async function handler(req, res) {
     const mains = mainIngredients(ings)   // 주재료(양념 제외) — 추천 앵커
     const domains = (chef && Array.isArray(chef.domains) && chef.domains.length) ? chef.domains : null
 
-    // 1단 검색 + 2단 셰프 도메인 필터 — 후보가 적으면 점진적으로 완화(폴백)
-    let cands = retrieveCandidates(ings, domains, { maxMissing: 2, limit: 24 })
-    if (domains && cands.length < 5) cands = retrieveCandidates(ings, domains, { maxMissing: 3, limit: 24 })
-    if (cands.length < 3) cands = retrieveCandidates(ings, null, { maxMissing: 2, limit: 24 })
-    if (cands.length === 0) cands = retrieveCandidates(ings, null, { maxMissing: 3, limit: 20 })
-
-    // 셰프를 골랐으면 그 셰프가 실제로 한 요리(시즌2 확정/유력 + 가정식) 중 냉장고 주재료와
-    // 맞는 것을 후보에 합친다 — 셰프 결의 요리가 재료로 직접 추천되도록.
+    // ── 3-티어 후보 빌드 ──
+    // 매칭은 두 행렬의 곱처럼 본다: (재료×요리) ⊗ (셰프×요리 친밀도).
+    // 티어 A = 셰프 본인 레퍼토리(시즌2+가정식) ∩ 재료, 친밀도 최대.
+    // 티어 B = 일반 풀 ∩ 셰프 cuisine 도메인 ∩ 재료, 같은 결의 영감.
+    // 티어 C = 일반 풀(도메인 무관) ∩ 재료, A+B가 빈약할 때 영감 보강.
+    let tierA = []
     if (chef && chef.id) {
       const cui = chef.cuisine || ''
       const rep = [
@@ -27,11 +25,28 @@ export default async function handler(req, res) {
         ...((SEASON2_CHEFS[chef.id] && SEASON2_CHEFS[chef.id].dishes) || [])
           .map(d => ({ name: d.dish.split(' — ')[0].replace(/\([^)]*\)/g, '').trim(), cuisine: cui, ingredients: d.ingredients }))
       ]
-      const repCands = dishesToCandidates(rep, ings).filter(c => c.haveMain && c.haveMain.length > 0)
-      const seen = new Set(cands.map(c => c.name))
-      for (const rc of repCands) if (rc.name && !seen.has(rc.name)) { cands.push(rc); seen.add(rc.name) }
-      cands = cands.slice(0, 24)
+      tierA = dishesToCandidates(rep, ings).filter(c => c.haveMain && c.haveMain.length > 0)
+      tierA.forEach(c => { c._tier = 'A' })
     }
+    let tierB = []
+    if (domains) {
+      tierB = retrieveCandidates(ings, domains, { maxMissing: 2, limit: 16 })
+      if (tierB.length < 3) tierB = retrieveCandidates(ings, domains, { maxMissing: 3, limit: 16 })
+      tierB.forEach(c => { c._tier = 'B' })
+    }
+    let tierC = []
+    if ((tierA.length + tierB.length) < 8) {
+      tierC = retrieveCandidates(ings, null, { maxMissing: 2, limit: 12 })
+      if (tierC.length === 0) tierC = retrieveCandidates(ings, null, { maxMissing: 3, limit: 12 })
+      tierC.forEach(c => { c._tier = 'C' })
+    }
+    // 머지(이름 중복 제거, 우선순위 A > B > C)
+    const seenName = new Set()
+    let cands = []
+    for (const lst of [tierA, tierB, tierC]) {
+      for (const c of lst) if (c.name && !seenName.has(c.name)) { cands.push(c); seenName.add(c.name) }
+    }
+    cands = cands.slice(0, 24)
 
     // 후보가 0개(냉장고가 비었거나 양념만 있을 때) — 셰프를 골랐다면 그 셰프의 "레퍼토리"
     // (도메인 일반요리 + 시즌2 확정 + 가정식 레시피)에서 매번 섞어 뽑아(회전) "추천 없음"을 방지.
@@ -57,12 +72,20 @@ export default async function handler(req, res) {
       sparse = cands.length > 0
     }
 
-    // 후보 요약 (3단 모델 grounding용) — 부족 재료를 '주재료'와 '양념'으로 분리해 매칭 품질을 높인다.
-    const candText = cands.map(c => {
+    // 후보 요약 — 티어별로 묶어 모델에게 우선순위를 명시.
+    const fmt = c => {
       const mm = (c.missingMain && c.missingMain.length) ? c.missingMain.join('·') : '없음'
       const ms = (c.missingSeasoning && c.missingSeasoning.length) ? c.missingSeasoning.join('·') : '없음'
       return `${c.name}[${c.cuisine}] 부족주재료:${mm} / 부족양념:${ms}`
-    }).join('\n')
+    }
+    const groupA = cands.filter(c => c._tier === 'A').map(fmt)
+    const groupB = cands.filter(c => c._tier === 'B').map(fmt)
+    const groupC = cands.filter(c => c._tier === 'C').map(fmt)
+    const candTextParts = []
+    if (groupA.length) candTextParts.push('[A · 이 셰프의 실제 요리 (최우선)]\n' + groupA.join('\n'))
+    if (groupB.length) candTextParts.push('[B · 일반 풀 · 같은 분야]\n' + groupB.join('\n'))
+    if (groupC.length) candTextParts.push('[C · 일반 풀 · 영감용]\n' + groupC.join('\n'))
+    const candText = candTextParts.join('\n\n')
 
     // 셰프 페르소나 블록
     let chefBlock = ''
@@ -81,11 +104,13 @@ export default async function handler(req, res) {
     const sigLine = sparse ? '\n[안내] 냉장고에 마땅한 재료가 없어 이 셰프의 레퍼토리에서 후보를 제시한다. 사야 할 재료(missing)가 많아도 괜찮으니, 후보 중 서로 다른 결의 요리를 다양하게 추천하라.' : ''
     // 3단 — 후보 중 셰프 스타일에 맞게 골라 정밀 변형
     const personaInstr = (chef && chef.name)
-      ? '사용자 냉장고의 주재료를 주인공으로, ' + chef.name + ' 셰프 스타일의 요리를 추천하라. ' +
-        '(1) 반드시 사용자가 가진 주재료(특히 고기·해산물·생선)를 메인으로 쓰는 요리를 골라라 — 사용자의 주재료를 하나도 안 쓰는 요리는 절대 추천하지 마라. ' +
-        '(2) 가능하면 여러 주재료를 함께 살려라(예: 조개·가리비·전복이 있으면 한 접시 해물 요리로 묶어라). ' +
-        '(3) 주재료를 살릴 마땅한 요리가 없으면, 그 주재료를 주인공으로 하되 부족한 핵심 재료 1~2개를 missing에 넣어 "이걸 추가하면 이 요리" 식으로 제안하라. ' +
-        '(4) 참고 후보는 영감일 뿐 — 주재료와 안 맞으면 무시하라. 단, 사용자가 가진 재료에 근거가 전혀 없는 엉뚱한 요리를 지어내진 마라. ' +
+      ? '우선순위 규칙: ' +
+        '먼저 [A · 이 셰프의 실제 요리]에서 사용자 주재료를 쓰는 것을 골라 그대로(또는 살짝 변주) 추천하라. ' +
+        '[A]에 마땅찮으면 [B · 같은 분야]에서 골라 ' + chef.name + ' 스타일로 변주하라. ' +
+        '[B]도 부족하면 [C · 영감용]에서 골라 ' + chef.name + ' 스타일로 적극 재해석하라. ' +
+        '항상 사용자가 가진 주재료(특히 고기·해산물·생선)를 메인으로 쓰고, 주재료를 하나도 안 쓰는 요리는 절대 추천하지 마라. ' +
+        '주재료를 살릴 마땅한 후보가 없으면 그 주재료를 주인공으로 하되 부족한 핵심 재료 1~2개를 missing에 넣어 "이걸 추가하면 이 요리" 식으로 제안하라. ' +
+        '여러 주재료를 함께 살릴 수 있으면 한 접시 요리로 묶어라(예: 조개·가리비·전복 → 해물 한 접시). ' +
         '최소 3개(가능하면 5개)를 ' + chef.name + ' 스타일로 제시하고, 변형에 맞게 요리명을 바꿔도 좋다.'
       : '사용자 냉장고의 주재료를 주인공으로 하는 요리를 추천하라. 주재료를 메인으로 쓰는 요리만 고르고, 마땅찮으면 핵심 재료 1~2개를 missing에 넣어 "이걸 추가하면 이 요리" 식으로 제안하라. 최소 3개 제시. 근거 없는 요리는 지어내지 마라.'
 
@@ -118,6 +143,8 @@ export default async function handler(req, res) {
         time: '', steps: []
       }))
     }
+    // 응답 직전 내부 메타(_tier) 제거 — 외부에 노출하지 않음
+    cands.forEach(c => { delete c._tier })
     res.status(200).json({ recipes, sparse })
   } catch (e) { res.status(500).json({ error: e.message }) }
 }
