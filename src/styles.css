@@ -163,3 +163,9 @@ button.mic.on{background:#ff6478;border-color:#ff6478;color:#fff;animation:mic-p
 .photo-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px}
 .photo-row .photo{margin-top:0}
 .photo-receipt{background:linear-gradient(135deg,#fff8e8,#ffe9b3);color:#9a7b1a}
+
+/* 스티커용 스테이지 — 살짝 더 크고 김은 위쪽 */
+.cl-stage.has-sticker{width:62px;height:62px}
+.cl-sticker{width:60px;height:60px;object-fit:contain;display:block;animation:chef-bounce 1.6s ease-in-out infinite;transform-origin:50% 90%}
+.cl-stage.has-sticker .cl-steam{top:-8px;right:6px}
+@keyframes chef-bounce{0%,100%{transform:translateY(0) rotate(-3deg)}50%{transform:translateY(-6px) rotate(3deg)}}

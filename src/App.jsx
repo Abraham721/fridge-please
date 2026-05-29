@@ -36,12 +36,21 @@ const DECOS = [
 ]
 
 function ChefLoader({ chef, message }) {
+  const [stickerOk, setStickerOk] = useState(true)
   const emoji = (chef && chef.emoji) || '👨‍🍳'
+  const stickerSrc = chef && chef.id ? `/chefs/${chef.id}.webp` : null
+  const useSticker = stickerOk && stickerSrc
   return (
     <div className="chefloader">
-      <div className="cl-stage" aria-hidden="true">
-        <span className="cl-chef">{emoji}</span>
-        <span className="cl-pan">🍳</span>
+      <div className={'cl-stage' + (useSticker ? ' has-sticker' : '')} aria-hidden="true">
+        {useSticker ? (
+          <img className="cl-sticker" src={stickerSrc} alt="" onError={() => setStickerOk(false)} />
+        ) : (
+          <>
+            <span className="cl-chef">{emoji}</span>
+            <span className="cl-pan">🍳</span>
+          </>
+        )}
         <span className="cl-steam"><span>·</span><span>·</span><span>·</span></span>
       </div>
       <div className="cl-msg">{message}<span className="cl-dots"></span></div>
