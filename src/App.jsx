@@ -312,8 +312,30 @@ export default function App() {
           <>
             <section className="card">
               <div className="h">📅 냉장고 전체 → 식단표 <span className="hint-mini">— 며칠치 끼니를 한 번에</span></div>
-              <p className="hint">현재 냉장고에 <b>{ingredients.length}개 재료</b>가 있어요. 이걸로 식단을 짜드릴게요.</p>
 
+              <div className="h sub">🧊 지금 냉장고 <span className="hint-mini">— {ingredients.length}개 재료</span></div>
+              <div className="addrow">
+                <input value={input} onChange={e => setInput(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') { addIngredient(input); setInput('') } }}
+                  placeholder="재료 입력 후 Enter" />
+                <button onClick={() => { addIngredient(input); setInput('') }}>추가</button>
+              </div>
+              {ingredients.length > 0 && (
+                <div className="chips compact">
+                  {ingredients.map(it => (
+                    <span className="chip" key={it}>
+                      <span className="em">{emo(it)}</span>{it}
+                      <button onClick={() => removeIngredient(it)}>✕</button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              <div className="photo-row">
+                <label className="photo">📷 사진으로 재료 인식<input type="file" accept="image/*" onChange={onPhoto} hidden /></label>
+                <label className="photo photo-receipt">🧾 영수증 인식<input type="file" accept="image/*" onChange={onReceipt} hidden /></label>
+              </div>
+
+              <div className="h sub" style={{marginTop:16}}>⚙️ 식단 옵션</div>
               <div className="plan-opts">
                 <label className="plan-opt"><span>기간</span>
                   <select value={planDays} onChange={e => setPlanDays(Number(e.target.value))}>
@@ -333,7 +355,8 @@ export default function App() {
                   </select>
                 </label>
               </div>
-              <input className="styin" value={planAvoidInput} onChange={e => setPlanAvoidInput(e.target.value)} placeholder="회피할 재료 (쉼표 구분, 예: 고수, 오이)" />
+              <input className="styin" value={style} onChange={e => setStyle(e.target.value)} placeholder="원하는 스타일 (매콤·다이어트·집밥·간단…)" />
+              <input className="styin" value={planAvoidInput} onChange={e => setPlanAvoidInput(e.target.value)} placeholder="알레르기·빼고 싶은 재료 (예: 오이, 고수, 새우)" />
 
               <div className="h" style={{marginTop:14}}>👨‍🍳 셰프 골라줘 <span className="hint-mini">— 안 고르면 8셰프 골고루</span></div>
               <div className="chips">

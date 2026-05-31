@@ -211,3 +211,9 @@ button.mic.on{background:#ff6478;border-color:#ff6478;color:#fff;animation:mic-p
   .plan-opts .plan-opt:last-child{grid-column:1 / -1}
   .plan-grid{grid-template-columns:1fr}
 }
+
+/* 작은 서브 헤더 (한 카드 안에서 섹션 분리) */
+.h.sub{font-size:13.5px;color:#9a4a6a;margin:6px 0 4px;letter-spacing:0}
+/* 식단 탭에서 냉장고 칩을 컴팩트하게 — 옵션 영역이 멀리 가지 않도록 */
+.chips.compact .chip{padding:3px 8px;font-size:12px;gap:3px}
+.chips.compact .chip .em{font-size:13px}
