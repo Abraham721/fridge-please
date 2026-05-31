@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef } from 'react'
 import { RECIPES, findRecipe, looseEq } from './recipes.js'
 import { CHEFS, findChef } from './chefs.js'
 import { parseVoiceIngredients } from './voice.js'
-import { detectIngredients, detectReceipt, recommendRecipes, dishIngredients, recipeDetail } from './ai.js'
+import { detectIngredients, detectReceipt, recommendRecipes, dishIngredients, recipeDetail, planMeals } from './ai.js'
 
 const LS_ING = 'fp_ingredients'
 const LS_CHEF = 'fp_chef'
@@ -75,6 +75,12 @@ export default function App() {
   const [detailBusy, setDetailBusy] = useState(false)
   const [target, setTarget] = useState('')
   const [cook, setCook] = useState(null)
+  // 식단 짜기
+  const [planDays, setPlanDays] = useState(3)
+  const [planMealsPerDay, setPlanMealsPerDay] = useState(3)
+  const [planPeople, setPlanPeople] = useState(2)
+  const [planAvoidInput, setPlanAvoidInput] = useState('')
+  const [planResult, setPlanResult] = useState(null)
 
   useEffect(() => { localStorage.setItem(LS_ING, JSON.stringify(ingredients)) }, [ingredients])
   useEffect(() => { localStorage.setItem(LS_CHEF, JSON.stringify(chefId)) }, [chefId])
@@ -139,6 +145,34 @@ export default function App() {
 
   function closeResults() { setShowResults(false); setDetail(null) }
 
+  async function onPlan() {
+    setError(''); setPlanResult(null)
+    setBusy((chef ? chef.name + ' 셰프와 ' : '') + planDays + '일치 식단 짜는 중')
+    try {
+      const avoid = planAvoidInput.split(/[,\s]+/).map(s => s.trim()).filter(Boolean)
+      const r = await planMeals(ingredients, chef, {
+        days: planDays, mealsPerDay: planMealsPerDay, people: planPeople,
+        style, avoid
+      })
+      setPlanResult(r)
+    } catch (err) { setError('식단 짜기 실패: ' + err.message) }
+    finally { setBusy('') }
+  }
+  function addAllShoppingToFridge() {
+    if (!planResult || !planResult.shoppingList) return
+    const today = new Date().toISOString().slice(0,10)
+    setIngredients(prev => {
+      const m = [...prev]
+      for (const it of planResult.shoppingList) if (!m.some(x => looseEq(x, it))) m.push(it)
+      return m
+    })
+    setFridgeMeta(prev => {
+      const m = { ...prev }
+      for (const it of planResult.shoppingList) if (!m[it]) m[it] = { addedAt: today }
+      return m
+    })
+  }
+
   async function onCook(name) {
     const dish = (name || target).trim()
     if (!dish) return
@@ -166,6 +200,7 @@ export default function App() {
         <nav className="tabs">
           <button className={tab === 'fridge' ? 'on' : ''} onClick={() => setTab('fridge')}><span className="em">🧊</span>냉장고</button>
           <button className={tab === 'cook' ? 'on' : ''} onClick={() => setTab('cook')}><span className="em">🍳</span>만들고 싶어</button>
+          <button className={tab === 'plan' ? 'on' : ''} onClick={() => setTab('plan')}><span className="em">📅</span>식단 짜기</button>
         </nav>
 
         {busy && !showResults && (
@@ -271,6 +306,85 @@ export default function App() {
               </div>
             )}
           </section>
+        )}
+
+        {tab === 'plan' && (
+          <>
+            <section className="card">
+              <div className="h">📅 냉장고 전체 → 식단표 <span className="hint-mini">— 며칠치 끼니를 한 번에</span></div>
+              <p className="hint">현재 냉장고에 <b>{ingredients.length}개 재료</b>가 있어요. 이걸로 식단을 짜드릴게요.</p>
+
+              <div className="plan-opts">
+                <label className="plan-opt"><span>기간</span>
+                  <select value={planDays} onChange={e => setPlanDays(Number(e.target.value))}>
+                    {[1,2,3,4,5,6,7].map(n => <option key={n} value={n}>{n}일</option>)}
+                  </select>
+                </label>
+                <label className="plan-opt"><span>하루 끼니</span>
+                  <select value={planMealsPerDay} onChange={e => setPlanMealsPerDay(Number(e.target.value))}>
+                    <option value={1}>저녁만</option>
+                    <option value={2}>점심·저녁</option>
+                    <option value={3}>아침·점심·저녁</option>
+                  </select>
+                </label>
+                <label className="plan-opt"><span>인원</span>
+                  <select value={planPeople} onChange={e => setPlanPeople(Number(e.target.value))}>
+                    {[1,2,3,4,5,6].map(n => <option key={n} value={n}>{n}명</option>)}
+                  </select>
+                </label>
+              </div>
+              <input className="styin" value={planAvoidInput} onChange={e => setPlanAvoidInput(e.target.value)} placeholder="회피할 재료 (쉼표 구분, 예: 고수, 오이)" />
+
+              <div className="h" style={{marginTop:14}}>👨‍🍳 셰프 골라줘 <span className="hint-mini">— 안 고르면 8셰프 골고루</span></div>
+              <div className="chips">
+                {CHEFS.map(c => (
+                  <button className={'chip add' + (chefId === c.id ? ' sel' : '')} key={c.id} onClick={() => setChefId(prev => prev === c.id ? '' : c.id)}>👨‍🍳 {c.name}</button>
+                ))}
+              </div>
+
+              <button className="cta" onClick={onPlan} disabled={!ingredients.length}>
+                📅 {chef ? chef.name + ' 셰프와 ' : ''}{planDays}일치 식단 짜기
+              </button>
+              {!ingredients.length && <p className="hint">먼저 냉장고 탭에서 재료를 추가해주세요.</p>}
+            </section>
+
+            {planResult && (
+              <section className="card">
+                <div className="h">🍽 {planDays}일 × {planMealsPerDay}끼 식단</div>
+                {planResult.reuseNote && <p className="reuse">💡 {planResult.reuseNote}</p>}
+
+                <div className="plan-grid">
+                  {planResult.days.map((d, di) => (
+                    <div className="plan-day" key={di}>
+                      <div className="plan-day-h">{d.label}</div>
+                      {d.meals.map((m, mi) => (
+                        <div className="plan-meal" key={mi} onClick={() => openDetail(m.name)}>
+                          <div className="plan-meal-type">{m.type}</div>
+                          <div className="plan-meal-name">🍲 {m.name}</div>
+                          {m.chef && <div className="plan-meal-chef">— {m.chef}</div>}
+                          <div className="plan-meal-meta">
+                            {m.nutrition && m.nutrition.kcal > 0 && <span className="kcal">🔥{m.nutrition.kcal}kcal</span>}
+                            {m.missing && m.missing.length > 0 && <span className="miss">+{m.missing.join(', ')}</span>}
+                          </div>
+                          {m.note && <div className="plan-meal-note">{m.note}</div>}
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+
+                {planResult.shoppingList && planResult.shoppingList.length > 0 && (
+                  <div className="shopping">
+                    <div className="h">🛒 장보기 리스트 <span className="hint-mini">({planResult.shoppingList.length}개)</span></div>
+                    <div className="chips">
+                      {planResult.shoppingList.map((it, i) => <span className="chip" key={i}>{it}</span>)}
+                    </div>
+                    <button className="cta secondary" onClick={addAllShoppingToFridge}>🧊 전체 냉장고에 추가</button>
+                  </div>
+                )}
+              </section>
+            )}
+          </>
         )}
         </div>
 

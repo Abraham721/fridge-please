@@ -178,3 +178,36 @@ button.mic.on{background:#ff6478;border-color:#ff6478;color:#fff;animation:mic-p
 .chefloader.big .cl-sticker{width:240px;height:240px;animation:chef-bounce 1.6s ease-in-out infinite}
 .chefloader.big .cl-msg{font-size:17px;line-height:1.5}
 @keyframes fade-in{from{opacity:0}to{opacity:1}}
+
+/* ── 식단 짜기 탭 ── */
+.plan-opts{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin:8px 0}
+.plan-opt{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--ink-soft,#666)}
+.plan-opt span{font-weight:600}
+.plan-opt select{padding:8px 10px;border-radius:10px;border:1.5px solid #ead8e0;background:#fff;font-size:14px;font-family:inherit;cursor:pointer}
+.plan-opt select:focus{outline:none;border-color:#f29ec1}
+.cta.secondary{background:#fff;color:#9a4a6a;border:1.5px solid #f0c6d3;margin-top:8px;font-weight:600}
+.cta.secondary:hover{background:#fff5f8}
+.cta:disabled{opacity:.5;cursor:not-allowed}
+
+.reuse{background:#fff8e8;border-left:3px solid #ffb858;border-radius:8px;padding:8px 12px;margin:6px 0 14px;font-size:13.5px;color:#7a5a1a}
+
+.plan-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-top:6px}
+.plan-day{background:#fff8fb;border-radius:14px;padding:10px;border:1.5px solid #f4d8e2}
+.plan-day-h{font-weight:700;font-size:14px;color:#9a4a6a;padding:2px 4px 8px;border-bottom:1.5px dashed #f0c6d3;margin-bottom:8px;letter-spacing:.5px}
+.plan-meal{background:#fff;border-radius:10px;padding:8px 10px;margin-bottom:6px;cursor:pointer;transition:transform .12s ease, box-shadow .12s ease;border:1px solid #f5e3eb}
+.plan-meal:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(242,158,193,.18);border-color:#f29ec1}
+.plan-meal-type{font-size:11px;color:#9a4a6a;font-weight:700;letter-spacing:.5px;margin-bottom:2px}
+.plan-meal-name{font-size:13.5px;font-weight:600;color:#333;line-height:1.3}
+.plan-meal-chef{font-size:11.5px;color:#888;margin-top:2px}
+.plan-meal-meta{display:flex;flex-wrap:wrap;gap:4px;margin-top:5px}
+.plan-meal-meta .kcal{font-size:10.5px;background:#fff2e0;color:#c66a1a;border-radius:8px;padding:1px 6px;font-weight:600}
+.plan-meal-meta .miss{font-size:10.5px;background:#fdecec;color:#a85a5a;border-radius:8px;padding:1px 6px}
+.plan-meal-note{font-size:11.5px;color:#888;margin-top:4px;font-style:italic;line-height:1.3}
+
+.shopping{margin-top:18px;padding-top:14px;border-top:1.5px dashed #f0c6d3}
+
+@media (max-width:520px){
+  .plan-opts{grid-template-columns:1fr 1fr}
+  .plan-opts .plan-opt:last-child{grid-column:1 / -1}
+  .plan-grid{grid-template-columns:1fr}
+}

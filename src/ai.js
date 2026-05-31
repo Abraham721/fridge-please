@@ -34,3 +34,15 @@ export async function recipeDetail(name, ingredients, chef, opts) {
   const o = opts || {}
   return await postJson('/api/recipe', { name, ingredients, chef: chef || null, style: o.style || '', fast: !!o.fast })
 }
+export async function planMeals(ingredients, chef, opts) {
+  const o = opts || {}
+  return await postJson('/api/mealplan', {
+    ingredients,
+    chef: chef || null,
+    days: o.days || 3,
+    mealsPerDay: o.mealsPerDay || 3,
+    people: o.people || 2,
+    style: o.style || '',
+    avoid: o.avoid || []
+  })
+}
