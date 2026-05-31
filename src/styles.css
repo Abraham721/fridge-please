@@ -169,3 +169,12 @@ button.mic.on{background:#ff6478;border-color:#ff6478;color:#fff;animation:mic-p
 .cl-sticker{width:60px;height:60px;object-fit:contain;display:block;animation:chef-bounce 1.6s ease-in-out infinite;transform-origin:50% 90%}
 .cl-stage.has-sticker .cl-steam{top:-8px;right:6px}
 @keyframes chef-bounce{0%,100%{transform:translateY(0) rotate(-3deg)}50%{transform:translateY(-6px) rotate(3deg)}}
+
+/* 화면 중앙 큰 셰프 로더 오버레이 */
+.bigchef-overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(255,245,250,0.86);backdrop-filter:blur(3px);z-index:50;padding:24px;animation:fade-in .25s ease-out}
+.chefloader.big{flex-direction:column;align-items:center;justify-content:center;background:transparent;padding:0;font-size:17px;font-weight:600;color:#3a7a6a;text-align:center;gap:18px;margin:0}
+.chefloader.big .cl-stage{width:auto;height:auto}
+.chefloader.big .cl-stage.has-sticker{width:240px;height:240px}
+.chefloader.big .cl-sticker{width:240px;height:240px;animation:chef-bounce 1.6s ease-in-out infinite}
+.chefloader.big .cl-msg{font-size:17px;line-height:1.5}
+@keyframes fade-in{from{opacity:0}to{opacity:1}}

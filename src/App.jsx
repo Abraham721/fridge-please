@@ -35,13 +35,13 @@ const DECOS = [
   { e: '🌈', top: '46%', left: '5%' }, { e: '🎀', top: '92%', left: '8%' }
 ]
 
-function ChefLoader({ chef, message }) {
+function ChefLoader({ chef, message, big }) {
   const [stickerOk, setStickerOk] = useState(true)
   const emoji = (chef && chef.emoji) || '👨‍🍳'
   const stickerSrc = chef && chef.id ? `/chefs/${chef.id}.webp` : null
   const useSticker = stickerOk && stickerSrc
   return (
-    <div className="chefloader">
+    <div className={'chefloader' + (big ? ' big' : '')}>
       <div className={'cl-stage' + (useSticker ? ' has-sticker' : '')} aria-hidden="true">
         {useSticker ? (
           <img className="cl-sticker" src={stickerSrc} alt="" onError={() => setStickerOk(false)} />
@@ -51,7 +51,7 @@ function ChefLoader({ chef, message }) {
             <span className="cl-pan">🍳</span>
           </>
         )}
-        <span className="cl-steam"><span>·</span><span>·</span><span>·</span></span>
+        {!big && <span className="cl-steam"><span>·</span><span>·</span><span>·</span></span>}
       </div>
       <div className="cl-msg">{message}<span className="cl-dots"></span></div>
     </div>
@@ -119,10 +119,14 @@ export default function App() {
   }
 
   async function onAiRecommend() {
-    setError(''); setShowResults(true); setAiRecipes(null); setDetail(null); setSparse(false)
-    setBusy((chef ? (chef.name + ' 추천 중') : 'AI 추천 중') + (fast ? ' (15분 이내)' : '') + '…')
-    try { const res = await recommendRecipes(ingredients, chef, { style, fast }); setAiRecipes(res.recipes); setSparse(res.sparse) }
-    catch (err) { setError('추천 실패: ' + err.message); setShowResults(false) }
+    setError(''); setAiRecipes(null); setDetail(null); setSparse(false)
+    setBusy((chef ? (chef.name + ' 추천 중') : 'AI 추천 중') + (fast ? ' (15분 이내)' : ''))
+    try {
+      const res = await recommendRecipes(ingredients, chef, { style, fast })
+      setAiRecipes(res.recipes); setSparse(res.sparse)
+      setShowResults(true)
+    }
+    catch (err) { setError('추천 실패: ' + err.message) }
     finally { setBusy('') }
   }
 
@@ -164,7 +168,11 @@ export default function App() {
           <button className={tab === 'cook' ? 'on' : ''} onClick={() => setTab('cook')}><span className="em">🍳</span>만들고 싶어</button>
         </nav>
 
-        {busy && !showResults && <ChefLoader chef={chef} message={busy} />}
+        {busy && !showResults && (
+          <div className="bigchef-overlay" onClick={e => e.stopPropagation()}>
+            <ChefLoader chef={chef} message={busy} big />
+          </div>
+        )}
         {error && <div className="banner err" onClick={() => setError('')}>{error} ✕</div>}
 
         <div className="tabbody">
